@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎬 ParceiroFlix - Seu Site de Filmes e Séries</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+    <h1>🎬 ParceiroFlix</h1>
+    <nav id="main-nav">
+        <ul>
+            <li><a href="#" data-endpoint="catalog">Início</a></li>
+            <li><a href="#" data-endpoint="/movie/now_playing">No Cinema</a></li>
+            <li><a href="#" data-endpoint="/movie/upcoming">Em Breve</a></li>
+            <li><a href="#" data-endpoint="/tv/airing_today">Séries Hoje</a></li>
+            <li><a href="#" data-endpoint="/movie/popular">Populares</a></li>
+        </ul>
+    </nav>
+
+    <div class="search-container">
+        <input type="text" id="search-input" placeholder="Buscar filme ou série...">
+        <button id="search-button">Buscar</button>
+    </div>
+</header>
+    <main>
+        <section id="catalog-container"></section>
+
+        <section id="results-container" class="results-grid"></section>
+
+        <section id="player-container" class="player-view" style="display:none;">
+            <h2>Assistindo: <span id="player-title"></span></h2>
+            
+            <div class="player-options">
+                <div id="series-selectors" style="display:none; margin-bottom: 10px;">
+                    <label for="season-select">Temporada:</label>
+                    <select id="season-select"></select>
+                    
+                    <label for="episode-select" style="margin-left: 15px;">Episódio:</label>
+                    <select id="episode-select"></select>
+                </div>
+
+                <label for="player-source">Escolha a Fonte do Player:</label>
+                <select id="player-source">
+                    <option value="megaembed.com" selected>megaembed.com (TMDB ID)</option>
+                    <option value="vidsrc-embed.ru">vidsrc-embed.ru (TMDB ID)</option>
+                    <option value="2embed.top">2embed.top (TMDB ID/IMDB ID)</option>
+                    <option value="vidsrc.cc">vidsrc.cc (v2 - TMDB ID)</option>
+                    <option value="playerflixapi.com">playerflixapi.com (IMDB/TMDB ID)</option>
+                    <option value="vidsrc.to">vidsrc.to (IMDB ID)</option>
+                </select>
+                <button id="load-player-button">Carregar Player</button>
+            </div>
+
+            <div id="video-player">
+                </div>
+            <button id="back-button">Voltar ao Catálogo</button>
+        </section>
+    </main>
+
+    <div id="details-modal" class="modal" style="display:none;">
+        <div class="modal-content">
+            <span class="close-button">&times;</span>
+            <div id="details-content">
+                </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
