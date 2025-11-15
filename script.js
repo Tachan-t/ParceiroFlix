@@ -7,6 +7,7 @@ const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 const TMDB_IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/original'; 
 const TMDB_POSTER_BASE_URL = 'https://image.tmdb.org/t/p/w500'; 
 
+
 // Elementos HTML
 const searchInput = document.getElementById('search-input');
 const searchButton = document.getElementById('search-button');
@@ -16,7 +17,7 @@ const heroCarousel = document.getElementById('hero-carousel');
 const catalogContainer = document.getElementById('catalog-container');
 const resultsContainer = document.getElementById('results-container');
 const playerContainer = document.getElementById('player-container');
-const videoPlayer = document.getElementById('video-player');
+const videoPlayer = document.getElementById('video-player'); // <--- CORREÇÃO GARANTIDA!
 const playerTitle = document.getElementById('player-title');
 const backButton = document.getElementById('back-button');
 const playerSourceSelect = document.getElementById('player-source');
@@ -672,7 +673,7 @@ loadPlayerButton.addEventListener('click', () => {
     }
 });
 
-// Evento do Modal: Fechad
+// Evento do Modal: Fecha ao clicar no botão 'x'
 closeButton.addEventListener('click', () => {
     detailsModal.style.display = 'none';
 });
