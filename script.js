@@ -16,6 +16,7 @@ const heroCarousel = document.getElementById('hero-carousel');
 const catalogContainer = document.getElementById('catalog-container');
 const resultsContainer = document.getElementById('results-container');
 const playerContainer = document.getElementById('player-container');
+const videoPlayer = document.getElementById('video-player');
 const playerTitle = document.getElementById('player-title');
 const backButton = document.getElementById('back-button');
 const playerSourceSelect = document.getElementById('player-source');
@@ -149,10 +150,11 @@ async function loadGenres() {
  */
 function populateDropdowns() {
     
-    // Adiciona divisor
+    // Adiciona divisor para filmes
     const movieSeparator = document.createElement('hr');
     moviesDropdown.appendChild(movieSeparator);
     
+    // Adiciona divisor para séries
     const tvSeparator = document.createElement('hr');
     tvDropdown.appendChild(tvSeparator);
     
@@ -490,19 +492,25 @@ function updateEpisodeOptions(seasonNumber) {
 }
 
 async function handleWatchClick(tmdbId, mediaType, mediaTitle) {
+    const mediaId = parseInt(tmdbId);
+    if (isNaN(mediaId)) {
+        console.error("ID de mídia inválido recebido:", tmdbId);
+        return; 
+    }
+
     Object.assign(currentMedia, {
-        tmdbId, mediaType, title: mediaTitle, imdbId: null, seasons: [], currentSeason: 1, currentEpisode: 1
+        tmdbId: mediaId, mediaType, title: mediaTitle, imdbId: null, seasons: [], currentSeason: 1, currentEpisode: 1
     });
 
     resetView('player-container'); 
     playerTitle.textContent = mediaTitle;
     seriesSelectors.style.display = 'none'; 
 
-    await getImdbId(tmdbId, mediaType);
+    await getImdbId(mediaId, mediaType);
     
     if (mediaType === 'tv') {
         seriesSelectors.style.display = 'block';
-        await loadSeriesOptions(tmdbId);
+        await loadSeriesOptions(mediaId);
     }
     
     createPlayer(); 
@@ -664,7 +672,7 @@ loadPlayerButton.addEventListener('click', () => {
     }
 });
 
-// Evento do Modal: Fecha ao clicar no botão 'x'
+// Evento do Modal: Fechad
 closeButton.addEventListener('click', () => {
     detailsModal.style.display = 'none';
 });
