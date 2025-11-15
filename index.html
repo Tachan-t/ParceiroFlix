@@ -3,69 +3,93 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🎬 ParceiroFlix - Seu Site de Filmes e Séries</title>
+    <title>CineStream</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <header>
-    <h1>🎬 ParceiroFlix</h1>
-    <nav id="main-nav">
-        <ul>
-            <li><a href="#" data-endpoint="catalog">Início</a></li>
-            <li><a href="#" data-endpoint="/movie/now_playing">No Cinema</a></li>
-            <li><a href="#" data-endpoint="/movie/upcoming">Em Breve</a></li>
-            <li><a href="#" data-endpoint="/tv/airing_today">Séries Hoje</a></li>
-            <li><a href="#" data-endpoint="/movie/popular">Populares</a></li>
-        </ul>
-    </nav>
+        <div class="logo-container">
+            <img src="BUARQUE (1).png" alt="CineStream Logo" class="header-logo">
+            <h1 class="site-title">CineStream</h1>
+        </div>
+        
+        <nav id="main-nav">
+            <ul>
+                <li><a href="#" data-endpoint="catalog">Início</a></li>
+                
+                <li class="dropdown">
+                    <a href="#" class="dropdown-toggle">Filmes ▼</a>
+                    <ul class="dropdown-menu" id="movies-dropdown">
+                        <li><a href="#" data-endpoint="/movie/now_playing" data-title="No Cinema">No Cinema</a></li>
+                        <li><a href="#" data-endpoint="/movie/top_rated" data-title="Mais Avaliados">Mais Avaliados</a></li>
+                        </ul>
+                </li>
+                
+                <li class="dropdown">
+                    <a href="#" class="dropdown-toggle">Séries ▼</a>
+                    <ul class="dropdown-menu" id="tv-dropdown">
+                        <li><a href="#" data-endpoint="/tv/on_the_air" data-title="Séries Atuais">Séries Atuais</a></li>
+                        <li><a href="#" data-endpoint="/tv/top_rated" data-title="Mais Avaliadas">Mais Avaliadas</a></li>
+                        </ul>
+                </li>
+                
+                <li><a href="#" data-endpoint="/trending/all/week" data-title="Populares">Populares</a></li>
+            </ul>
+        </nav>
 
-    <div class="search-container">
-        <input type="text" id="search-input" placeholder="Buscar filme ou série...">
-        <button id="search-button">Buscar</button>
-    </div>
-</header>
+        <div class="search-container">
+            <input type="text" id="search-input" placeholder="Buscar filme ou série...">
+            <button id="search-button">Buscar</button>
+        </div>
+    </header>
+
+    <section id="hero-banner-container" style="display: none;">
+        <div id="hero-carousel">
+            </div>
+    </section>
+
     <main>
         <section id="catalog-container"></section>
 
-        <section id="results-container" class="results-grid"></section>
+        <section id="results-container" class="results-grid" style="display: none;"></section>
 
-        <section id="player-container" class="player-view" style="display:none;">
-            <h2>Assistindo: <span id="player-title"></span></h2>
+        <section id="player-container" style="display: none;">
+            <button id="back-button" class="back-button">← Voltar</button>
+            <h2 id="player-title">Título do Filme/Série</h2>
             
             <div class="player-options">
-                <div id="series-selectors" style="display:none; margin-bottom: 10px;">
+                <label for="player-source">Fonte do Player:</label>
+                <select id="player-source">
+                    <option value="megaembed.com">MegaEmbed</option>
+                    <option value="vidsrc-embed.ru">VidSrc-Embed</option>
+                    <option value="2embed.top">2Embed</option>
+                    <option value="vidsrc.cc">VidSrc.cc</option>
+                    <option value="playerflixapi.com">PlayerFlix API</option>
+                    <option value="vidsrc.to">VidSrc.to (IMDB)</option>
+                </select>
+
+                <div id="series-selectors" style="display: none;">
                     <label for="season-select">Temporada:</label>
                     <select id="season-select"></select>
-                    
-                    <label for="episode-select" style="margin-left: 15px;">Episódio:</label>
+                    <label for="episode-select">Episódio:</label>
                     <select id="episode-select"></select>
                 </div>
-
-                <label for="player-source">Escolha a Fonte do Player:</label>
-                <select id="player-source">
-                    <option value="megaembed.com" selected>megaembed.com (TMDB ID)</option>
-                    <option value="vidsrc-embed.ru">vidsrc-embed.ru (TMDB ID)</option>
-                    <option value="2embed.top">2embed.top (TMDB ID/IMDB ID)</option>
-                    <option value="vidsrc.cc">vidsrc.cc (v2 - TMDB ID)</option>
-                    <option value="playerflixapi.com">playerflixapi.com (IMDB/TMDB ID)</option>
-                    <option value="vidsrc.to">vidsrc.to (IMDB ID)</option>
-                </select>
-                <button id="load-player-button">Carregar Player</button>
+                
+                <button id="load-player-button" class="load-player-button">Carregar Player</button>
             </div>
 
             <div id="video-player">
                 </div>
-            <button id="back-button">Voltar ao Catálogo</button>
         </section>
-    </main>
 
-    <div id="details-modal" class="modal" style="display:none;">
-        <div class="modal-content">
-            <span class="close-button">&times;</span>
-            <div id="details-content">
-                </div>
+        <div id="details-modal" class="modal">
+            <div class="modal-content">
+                <span class="close-button">&times;</span>
+                <div id="details-content">
+                    </div>
+            </div>
         </div>
-    </div>
+    </main>
 
     <script src="script.js"></script>
 </body>

@@ -2,20 +2,27 @@
 // Esta chave será usada para buscar os metadados (capa, título, ID, etc.).
 const TMDB_API_KEY = '62fd8e76492e4bdda5e40b8eb6520a00'; 
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
-const TMDB_IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/w500';
+
+// CORREÇÃO: Variáveis Base URL para diferentes tipos de imagem
+const TMDB_IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/original'; 
+const TMDB_POSTER_BASE_URL = 'https://image.tmdb.org/t/p/w500'; 
 
 // Elementos HTML
 const searchInput = document.getElementById('search-input');
 const searchButton = document.getElementById('search-button');
 const mainNav = document.getElementById('main-nav'); 
+const heroBannerContainer = document.getElementById('hero-banner-container'); 
+const heroCarousel = document.getElementById('hero-carousel');
 const catalogContainer = document.getElementById('catalog-container');
 const resultsContainer = document.getElementById('results-container');
 const playerContainer = document.getElementById('player-container');
-const videoPlayer = document.getElementById('video-player');
 const playerTitle = document.getElementById('player-title');
 const backButton = document.getElementById('back-button');
 const playerSourceSelect = document.getElementById('player-source');
 const loadPlayerButton = document.getElementById('load-player-button');
+
+const moviesDropdown = document.getElementById('movies-dropdown');
+const tvDropdown = document.getElementById('tv-dropdown');
 
 // Elementos para Séries/Modal
 const seriesSelectors = document.getElementById('series-selectors');
@@ -30,36 +37,143 @@ let currentMedia = {
     tmdbId: null, mediaType: null, title: null, imdbId: null, 
     seasons: [], currentSeason: 1, currentEpisode: 1 
 };
+let currentCategory = { 
+    endpoint: null, title: null, page: 1, totalPages: 1
+};
+let currentSlide = 0; 
 
-// --- FUNÇÕES DE UTILIDADE E FLUXO ---
+// Variáveis de Gênero
+let movieGenres = [];
+let tvGenres = [];
 
-/**
- * Funcao para resetar a visualizacao e limpar os containers principais.
- * @param {string} targetContainerId ID do container que deve ficar visível ('catalog-container', 'results-container', 'player-container').
- */
-function resetView(targetContainerId) {
-    catalogContainer.style.display = 'none';
-    resultsContainer.style.display = 'none';
-    playerContainer.style.display = 'none';
+
+// --- FUNÇÕES DE HERO BANNER ---
+
+async function loadHeroBanner() {
+    const url = `${TMDB_BASE_URL}/trending/all/day?api_key=${TMDB_API_KEY}&language=pt-BR`;
     
-    // Limpa apenas o container que não será usado no momento (ou será preenchido)
-    if (targetContainerId !== 'catalog-container') {
-        catalogContainer.innerHTML = '';
+    try {
+        const response = await fetch(url);
+        const data = await response.json();
+        
+        const trendingItems = data.results.filter(item => item.backdrop_path).slice(0, 5); 
+        
+        heroCarousel.innerHTML = ''; 
+        
+        trendingItems.forEach((item, index) => {
+            const backdropUrl = `${TMDB_IMAGE_BASE_URL}${item.backdrop_path}`;
+            const title = item.title || item.name;
+            const overview = item.overview.length > 200 ? item.overview.substring(0, 200) + '...' : item.overview;
+
+            const slide = document.createElement('div');
+            slide.className = 'hero-slide';
+            if (index === 0) {
+                slide.classList.add('active'); 
+            }
+            
+            slide.style.backgroundImage = `url(${backdropUrl})`;
+            
+            slide.innerHTML = `
+                <div class="hero-content">
+                    <h2>${title}</h2>
+                    <p>${overview}</p>
+                    <button class="hero-watch-button" 
+                            data-id="${item.id}" 
+                            data-type="${item.media_type || 'movie'}" 
+                            data-title="${title}">
+                        ASSISTIR FILME
+                    </button>
+                </div>
+            `;
+            heroCarousel.appendChild(slide);
+        });
+
+        heroBannerContainer.style.display = 'block';
+
+        // Anexa listener ao botão do banner
+        heroCarousel.querySelectorAll('.hero-watch-button').forEach(button => {
+            button.addEventListener('click', (e) => {
+                const id = e.target.dataset.id;
+                const type = e.target.dataset.type;
+                const title = e.target.dataset.title;
+                handleWatchClick(id, type, title);
+            });
+        });
+
+        // Inicia a rotação
+        if (trendingItems.length > 1) {
+            setInterval(rotateBanner, 8000); 
+        }
+
+    } catch (error) {
+        console.error('Erro ao carregar Hero Banner:', error);
+        heroBannerContainer.style.display = 'none';
     }
-    if (targetContainerId !== 'results-container') {
-        resultsContainer.innerHTML = '';
-    }
+}
+
+function rotateBanner() {
+    const slides = heroCarousel.querySelectorAll('.hero-slide');
+    if (slides.length === 0) return;
+
+    slides[currentSlide].classList.remove('active');
     
-    // Torna o container de destino visível
-    const target = document.getElementById(targetContainerId);
-    if (target) {
-        target.style.display = targetContainerId === 'results-container' ? 'grid' : 'block';
+    currentSlide = (currentSlide + 1) % slides.length;
+    
+    slides[currentSlide].classList.add('active');
+}
+
+
+// --- FUNÇÕES DE GÊNEROS ---
+
+async function loadGenres() {
+    const movieUrl = `${TMDB_BASE_URL}/genre/movie/list?api_key=${TMDB_API_KEY}&language=pt-BR`;
+    const tvUrl = `${TMDB_BASE_URL}/genre/tv/list?api_key=${TMDB_API_KEY}&language=pt-BR`;
+
+    try {
+        const [movieResponse, tvResponse] = await Promise.all([fetch(movieUrl), fetch(tvUrl)]);
+        const movieData = await movieResponse.json();
+        const tvData = await tvResponse.json();
+
+        movieGenres = movieData.genres;
+        tvGenres = tvData.genres;
+
+        populateDropdowns();
+
+    } catch (error) {
+        console.error('Erro ao carregar gêneros:', error);
     }
 }
 
 /**
- * Anexa os listeners de clique aos botões dos cards.
+ * Popula os menus dropdown com os gêneros obtidos, mantendo os links fixos.
  */
+function populateDropdowns() {
+    
+    // Adiciona divisor
+    const movieSeparator = document.createElement('hr');
+    moviesDropdown.appendChild(movieSeparator);
+    
+    const tvSeparator = document.createElement('hr');
+    tvDropdown.appendChild(tvSeparator);
+    
+    // 1. Filmes (Adiciona a lista de gêneros abaixo dos fixos)
+    movieGenres.forEach(genre => {
+        const li = document.createElement('li');
+        li.innerHTML = `<a href="#" data-endpoint="/discover/movie?with_genres=${genre.id}" data-title="${genre.name}">${genre.name}</a>`;
+        moviesDropdown.appendChild(li);
+    });
+
+    // 2. Séries (Adiciona a lista de gêneros abaixo dos fixos)
+    tvGenres.forEach(genre => {
+        const li = document.createElement('li');
+        li.innerHTML = `<a href="#" data-endpoint="/discover/tv?with_genres=${genre.id}" data-title="${genre.name}">${genre.name}</a>`;
+        tvDropdown.appendChild(li);
+    });
+}
+
+
+// --- 1. FUNÇÕES DE UTILIDADE E LISTENERS ---
+
 function attachListeners() {
     document.querySelectorAll('.watch-button').forEach(button => {
         button.onclick = null; 
@@ -81,7 +195,51 @@ function attachListeners() {
     });
 }
 
-// --- FUNÇÕES DE CARREGAMENTO DE CONTEÚDO ---
+async function getImdbId(tmdbId, mediaType) {
+    const typeEndpoint = mediaType === 'movie' ? 'movie' : 'tv';
+    const url = `${TMDB_BASE_URL}/${typeEndpoint}/${tmdbId}?api_key=${TMDB_API_KEY}`;
+    
+    try {
+        const response = await fetch(url);
+        const data = await response.json();
+        if (data.imdb_id) {
+            currentMedia.imdbId = data.imdb_id;
+        }
+
+    } catch (error) {
+        console.warn('Não foi possível obter o IMDB ID.', error);
+    }
+}
+
+/**
+ * Funcao para resetar a visualizacao e limpar os containers principais.
+ */
+function resetView(targetContainerId) {
+    catalogContainer.style.display = 'none';
+    resultsContainer.style.display = 'none';
+    playerContainer.style.display = 'none';
+    
+    if (targetContainerId !== 'catalog-container') {
+        catalogContainer.innerHTML = '';
+    }
+    if (targetContainerId !== 'results-container') {
+        resultsContainer.innerHTML = '';
+    }
+    
+    const target = document.getElementById(targetContainerId);
+    if (target) {
+        target.style.display = targetContainerId === 'results-container' ? 'grid' : 'block';
+    }
+    
+    // Oculta/Exibe o banner
+    if (targetContainerId === 'catalog-container') {
+         heroBannerContainer.style.display = 'block';
+    } else {
+         heroBannerContainer.style.display = 'none';
+    }
+}
+
+// --- 2. FUNÇÕES DE VISUALIZAÇÃO E CATÁLOGO ---
 
 const catalogQueries = [
     { endpoint: '/trending/movie/week', title: 'Filmes Populares da Semana', type: 'movie' },
@@ -90,10 +248,12 @@ const catalogQueries = [
 ];
 
 /**
- * Carrega e exibe as listas de catálogo na tela inicial.
+ * Carrega e exibe as listas de catálogo na tela inicial (CARROSSEL).
  */
 async function loadCatalog() {
-    resetView('catalog-container'); // Oculta tudo, exibe apenas o catálogo
+    resetView('catalog-container'); 
+    currentCategory.endpoint = null; 
+    currentCategory.page = 1;
 
     for (const query of catalogQueries) {
         const url = `${TMDB_BASE_URL}${query.endpoint}?api_key=${TMDB_API_KEY}&language=pt-BR`;
@@ -116,25 +276,80 @@ async function loadCatalog() {
 }
 
 /**
- * Carrega filmes/séries baseados em um endpoint de categoria (menu de navegação).
+ * Renderiza os botões de paginação na tela de categoria.
  */
-async function loadCategory(endpoint, title) {
-    resetView('results-container'); // Oculta tudo, exibe apenas o resultsContainer
-    resultsContainer.innerHTML = `<p>Carregando ${title}...</p>`;
+function renderPagination(totalPages, currentPage, endpoint, title) {
+    const paginationContainer = document.createElement('div');
+    paginationContainer.className = 'pagination-controls';
 
-    const url = `${TMDB_BASE_URL}${endpoint}?api_key=${TMDB_API_KEY}&language=pt-BR`;
+    const maxButtons = 5;
+    let startPage = Math.max(1, currentPage - Math.floor(maxButtons / 2));
+    let endPage = Math.min(totalPages, startPage + maxButtons - 1);
     
-    const primaryType = endpoint.includes('/movie/') ? 'movie' : 'tv';
+    if (endPage - startPage < maxButtons - 1) {
+        startPage = Math.max(1, endPage - maxButtons + 1);
+    }
+    
+    if (currentPage > 1) {
+        paginationContainer.innerHTML += `<button data-page="${currentPage - 1}">Anterior</button>`;
+    }
+    
+    for (let i = startPage; i <= endPage; i++) {
+        paginationContainer.innerHTML += `<button data-page="${i}" class="${i === currentPage ? 'active' : ''}">${i}</button>`;
+    }
+
+    if (currentPage < totalPages) {
+        paginationContainer.innerHTML += `<button data-page="${currentPage + 1}">Próxima</button>`;
+    }
+
+    const resultsSection = resultsContainer.querySelector('.catalog-section');
+    if (resultsSection) {
+        resultsSection.appendChild(paginationContainer);
+        
+        paginationContainer.querySelectorAll('button').forEach(button => {
+            button.addEventListener('click', (e) => {
+                const newPage = parseInt(e.target.dataset.page);
+                loadCategory(endpoint, title, newPage);
+                window.scrollTo(0, 0); 
+            });
+        });
+    }
+}
+
+
+/**
+ * Carrega filmes/séries baseados em um endpoint de categoria (VER TODOS / GRADE).
+ */
+async function loadCategory(endpoint, title, page = 1) {
+    resetView('results-container');
+    resultsContainer.innerHTML = `<p>Carregando ${title}... (Página ${page})</p>`;
+
+    currentCategory.endpoint = endpoint;
+    currentCategory.title = title;
+    currentCategory.page = page;
+
+    const finalEndpoint = endpoint.includes('?') ? `${endpoint}&page=${page}` : `${endpoint}?page=${page}`;
+    const url = `${TMDB_BASE_URL}${finalEndpoint}&api_key=${TMDB_API_KEY}&language=pt-BR`;
+    
+    const primaryType = endpoint.includes('/movie/') || endpoint.includes('discover/movie') ? 'movie' : 'tv';
 
     try {
         const response = await fetch(url);
         const data = await response.json();
         
-        // Cria a nova estrutura de carrossel no resultsContainer
-        resultsContainer.innerHTML = `<section class="catalog-section"><h2>${title}</h2><div id="category-results" class="carousel-row"></div></section>`;
+        if (!data.results || data.results.length === 0) {
+            resultsContainer.innerHTML = `<p>Nenhum resultado encontrado na página ${page}.</p>`;
+            return;
+        }
+
+        currentCategory.totalPages = Math.min(500, data.total_pages);
+        
+        resultsContainer.innerHTML = `<section class="catalog-section"><h2>${title} (Página ${page} de ${currentCategory.totalPages})</h2><div id="category-results" class="results-grid"></div></section>`;
         const categoryResultsContainer = document.getElementById('category-results');
 
         displayResults(data.results, categoryResultsContainer, primaryType);
+        
+        renderPagination(currentCategory.totalPages, currentCategory.page, endpoint, title);
 
     } catch (error) {
         console.error(`Erro ao carregar categoria ${title}:`, error);
@@ -142,11 +357,11 @@ async function loadCategory(endpoint, title) {
     }
 }
 
+
 /**
- * Exibe os resultados da busca (usada tanto para busca quanto para catálogo).
+ * Exibe os resultados na tela.
  */
 function displayResults(results, container = resultsContainer, forcedType = null) {
-    // A visibilidade dos containers principais já foi ajustada por resetView()
     
     // Mapeia e filtra os resultados
     const mappedResults = results.map(item => ({
@@ -174,7 +389,7 @@ function displayResults(results, container = resultsContainer, forcedType = null
         const type = item.media_type;
         const title = item.title; 
         const mediaId = item.id;
-        const posterUrl = `${TMDB_IMAGE_BASE_URL}${item.poster_path}`;
+        const posterUrl = `${TMDB_POSTER_BASE_URL}${item.poster_path}`;
 
         const card = document.createElement('div');
         card.className = 'movie-card';
@@ -205,6 +420,7 @@ async function searchMedia(query) {
 
     resetView('results-container');
     resultsContainer.innerHTML = `<p>Buscando resultados para "${query}"...</p>`;
+    currentCategory.endpoint = null; 
 
     const url = `${TMDB_BASE_URL}/search/multi?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(query)}&language=pt-BR`;
 
@@ -215,8 +431,10 @@ async function searchMedia(query) {
         }
         const data = await response.json();
         
-        // Renderiza no resultsContainer (que já está configurado como grid para buscas)
-        displayResults(data.results, resultsContainer);
+        resultsContainer.innerHTML = `<section class="catalog-section"><h2>Resultados da Busca</h2><div id="search-results" class="results-grid"></div></section>`;
+        const searchResultsContainer = document.getElementById('search-results');
+
+        displayResults(data.results, searchResultsContainer);
 
     } catch (error) {
         console.error('Erro na busca:', error);
@@ -225,7 +443,7 @@ async function searchMedia(query) {
 }
 
 
-// --- 4. FUNÇÕES DE PLAYER E MODAL (Omitidas por brevidade, mas devem estar no seu arquivo) ---
+// --- 3. FUNÇÕES DE PLAYER E MODAL (Demais Funções) ---
 
 async function loadSeriesOptions(tmdbId) {
     const url = `${TMDB_BASE_URL}/tv/${tmdbId}?api_key=${TMDB_API_KEY}&language=pt-BR`;
@@ -233,8 +451,11 @@ async function loadSeriesOptions(tmdbId) {
     try {
         const response = await fetch(url);
         const data = await response.json();
+
         const validSeasons = data.seasons.filter(s => s.season_number > 0 && s.episode_count > 0);
+        
         currentMedia.seasons = validSeasons;
+        
         seasonSelect.innerHTML = '';
         validSeasons.forEach(season => {
             const option = document.createElement('option');
@@ -242,8 +463,10 @@ async function loadSeriesOptions(tmdbId) {
             option.textContent = `T${season.season_number}`;
             seasonSelect.appendChild(option);
         });
+
         currentMedia.currentSeason = validSeasons.length > 0 ? validSeasons[0].season_number : 1;
         updateEpisodeOptions(currentMedia.currentSeason);
+
     } catch (error) {
         console.error('Erro ao carregar opções de séries:', error);
         seriesSelectors.innerHTML = `<p>Erro: Falha ao carregar temporadas.</p>`;
@@ -271,7 +494,7 @@ async function handleWatchClick(tmdbId, mediaType, mediaTitle) {
         tmdbId, mediaType, title: mediaTitle, imdbId: null, seasons: [], currentSeason: 1, currentEpisode: 1
     });
 
-    resetView('player-container'); // Exibe apenas o player
+    resetView('player-container'); 
     playerTitle.textContent = mediaTitle;
     seriesSelectors.style.display = 'none'; 
 
@@ -288,6 +511,7 @@ async function handleWatchClick(tmdbId, mediaType, mediaTitle) {
 function createPlayer() {
     const source = playerSourceSelect.value;
     const { tmdbId, mediaType, imdbId, currentSeason, currentEpisode } = currentMedia;
+
     videoPlayer.innerHTML = ''; 
     let embedUrl = '';
     const typeParam = mediaType === 'movie' ? 'movie' : 'tv';
@@ -363,10 +587,11 @@ async function showDetailsModal(tmdbId, mediaType) {
     try {
         const response = await fetch(url);
         const data = await response.json();
+
         const title = data.title || data.name;
         const sinopse = data.overview || 'Sinopse não disponível em Português.';
         const posterPath = data.poster_path;
-        const posterUrl = posterPath ? `${TMDB_IMAGE_BASE_URL}${posterPath}` : '';
+        const posterUrl = posterPath ? `${TMDB_POSTER_BASE_URL}${posterPath}` : '';
         const year = (data.release_date || data.first_air_date || '').substring(0, 4);
 
         detailsContent.innerHTML = `
@@ -385,7 +610,7 @@ async function showDetailsModal(tmdbId, mediaType) {
 }
 
 
-// --- 5. EVENTOS ---
+// --- 4. EVENTOS ---
 
 // Evento de navegação: Listener para os links
 mainNav.addEventListener('click', (event) => {
@@ -397,7 +622,8 @@ mainNav.addEventListener('click', (event) => {
         if (endpoint === 'catalog') {
             loadCatalog(); 
         } else {
-            loadCategory(endpoint, title); 
+            // Se for um link de categoria/gênero, carrega a página 1
+            loadCategory(endpoint, title, 1); 
         }
     }
 });
@@ -452,12 +678,16 @@ window.addEventListener('click', (event) => {
 
 // Evento: Voltar ao Catálogo
 backButton.addEventListener('click', () => {
-    resetView('catalog-container'); // Garante que apenas o catálogo seja exibido
-    loadCatalog(); // Recarrega o conteúdo
+    resetView('catalog-container'); 
+    loadCatalog();
     Object.assign(currentMedia, {
         tmdbId: null, mediaType: null, title: null, imdbId: null, seasons: [], currentSeason: 1, currentEpisode: 1
     });
 });
 
-// Inicialização: Carrega o catálogo assim que a página é carregada
-document.addEventListener('DOMContentLoaded', loadCatalog);
+// Inicialização: Carrega o catálogo e o banner
+document.addEventListener('DOMContentLoaded', () => {
+    loadCatalog();
+    loadHeroBanner(); 
+    loadGenres(); 
+});
