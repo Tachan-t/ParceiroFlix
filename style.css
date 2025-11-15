@@ -13,6 +13,7 @@ header {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    /* Linha de design moderna */
     border-bottom: none; 
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5); /* Sombra sutil */
     position: sticky; 
@@ -21,9 +22,10 @@ header {
 }
 
 .logo-container {
-    display: flex;       
+    display: flex;      
     align-items: center; 
     margin-right: 30px;  
+    cursor: pointer; /* Adicionado cursor para indicar clicável */
 }
 
 .header-logo {
@@ -342,11 +344,35 @@ main {
 .watch-button:hover { background-color: #ff0b1a; }
 .details-button:hover { background-color: #555; }
 
+/* --- Novo Estilo: TV ao Vivo / Player de Embed --- */
+/* Card de TV ao vivo */
+.channel-card {
+    height: auto; 
+    max-width: 220px; 
+    min-width: 180px;
+}
+
+.channel-card .card-info {
+    padding: 15px 10px;
+}
+
+.channel-logo {
+    padding: 10px; 
+    background-color: #000; 
+    height: 200px;
+    object-fit: contain;
+}
+
 
 /* --- ESTILO PARA O PLAYER E MODAL (CONTROLES MODERNOS) --- */
 
 .player-view {
     text-align: center;
+}
+
+#player-container {
+    text-align: center;
+    padding: 20px;
 }
 
 #video-player {
@@ -363,6 +389,32 @@ main {
     height: 100%;
     border: none;
 }
+
+/* Estilo para o aviso de stream (UX) */
+.stream-info-overlay {
+    background-color: rgba(30, 30, 30, 0.9); /* Fundo escuro semi-transparente */
+    color: #ffcc00; /* Cor de aviso */
+    padding: 10px;
+    border-radius: 4px;
+    margin-top: 15px;
+    max-width: 950px;
+    margin-left: auto;
+    margin-right: auto;
+    font-size: 0.9em;
+    border: 1px solid #ffcc0044;
+}
+
+.stream-info-overlay p {
+    margin: 0;
+}
+
+/* Estilo para o elemento VIDEO (usado com HLS.js) */
+#live-video-player {
+    width: 100%;
+    height: 100%;
+    object-fit: contain; /* Garante que o vídeo se ajuste sem cortar */
+}
+
 
 .player-options {
     margin: 20px auto 40px; 
@@ -410,6 +462,39 @@ main {
     transform: translateY(-1px);
 }
 
+/* Botão Voltar Redondo e Estilizado */
+.round-back-button {
+    background-color: #e50914; 
+    color: white;
+    border: none;
+    padding: 12px 18px; 
+    font-size: 1.1em; 
+    font-weight: bold;
+    border-radius: 25px; 
+    cursor: pointer;
+    transition: background-color 0.2s, transform 0.2s, box-shadow 0.2s;
+    display: inline-flex; 
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 20px; 
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4); 
+    text-decoration: none; 
+}
+
+.round-back-button:hover {
+    background-color: #ff0b1a; 
+    transform: translateY(-2px); 
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.6); 
+}
+
+/* Ajusta o texto da seta para ter um pequeno espaço */
+.round-back-button::before {
+    content: '←'; 
+    margin-right: 8px; 
+    font-size: 1.2em; 
+}
+
+
 /* Container do Select Customizado */
 .custom-select-container {
     display: flex;
@@ -452,7 +537,7 @@ main {
     -moz-appearance: none;
     
     background-color: transparent;
-    color: white; /* Mantido branco para o texto no "botão" customizado */
+    color: white; 
     padding: 10px 35px 10px 12px; 
     border: none;
     width: 100%;
@@ -467,8 +552,8 @@ main {
 
 /* CORREÇÃO PARA A COR DO TEXTO NAS OPÇÕES QUANDO O DROPDOWN É ABERTO */
 .styled-select option {
-    background-color: white; /* Fundo branco para as opções nativas */
-    color: black;            /* Texto preto para as opções nativas */
+    background-color: white; 
+    color: black;            
 }
 
 
@@ -585,36 +670,4 @@ main {
 .pagination-controls button:first-child, 
 .pagination-controls button:last-child {
     min-width: 80px; 
-}
-
-/* --- ESTILO PARA O BOTÃO VOLTAR REDONDO E MODERNO --- */
-.round-back-button {
-    background-color: #e50914; /* Cor primária do CineStream */
-    color: white;
-    border: none;
-    padding: 12px 18px; /* Mais padding para o formato redondo */
-    font-size: 1.1em; /* Um pouco maior */
-    font-weight: bold;
-    border-radius: 25px; /* Metade da altura total para ficar redondo */
-    cursor: pointer;
-    transition: background-color 0.2s, transform 0.2s, box-shadow 0.2s;
-    display: inline-flex; /* Para alinhar o ícone e o texto */
-    align-items: center;
-    justify-content: center;
-    margin-bottom: 20px; /* Espaçamento com o conteúdo abaixo */
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4); /* Sombra para profundidade */
-    text-decoration: none; /* Em caso de ser um link no futuro */
-}
-
-.round-back-button:hover {
-    background-color: #ff0b1a; /* Cor mais clara ao passar o mouse */
-    transform: translateY(-2px); /* Efeito de "levantar" */
-    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.6); /* Sombra mais intensa */
-}
-
-/* Ajusta o texto da seta para ter um pequeno espaço */
-.round-back-button::before {
-    content: '←'; /* Caractere de seta para a esquerda */
-    margin-right: 8px; /* Espaço entre a seta e o texto "Voltar" */
-    font-size: 1.2em; /* Tamanho da seta ligeiramente maior */
 }

@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CineStream</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css"> 
 </head>
 <body>
     <header>
@@ -16,6 +16,8 @@
         <nav id="main-nav">
             <ul>
                 <li><a href="#" data-endpoint="catalog">Início</a></li>
+                
+                <li><a href="#" data-endpoint="live_tv" data-title="TV ao Vivo">TV ao Vivo</a></li> 
                 
                 <li class="dropdown">
                     <a href="#" class="dropdown-toggle">Filmes ▼</a>
@@ -54,7 +56,7 @@
         <section id="results-container" class="results-grid" style="display: none;"></section>
 
         <section id="player-container" style="display: none;">
-            <button id="back-button" class="round-back-button">Voltar</button>
+            <button id="back-button" class="round-back-button">← Voltar</button>
             <h2 id="player-title">Título do Filme/Série</h2>
             
             <div class="player-options">
@@ -76,14 +78,14 @@
                     <div class="custom-select-container">
                         <label for="season-select">Temporada:</label>
                         <div class="custom-select-wrapper small-select">
-                            <select id="season-select" class="styled-select"></select>
+                            <select id="season-select"></select>
                         </div>
                     </div>
                     
                     <div class="custom-select-container">
                         <label for="episode-select">Episódio:</label>
                         <div class="custom-select-wrapper small-select">
-                            <select id="episode-select" class="styled-select"></select>
+                            <select id="episode-select"></select>
                         </div>
                     </div>
                 </div>
@@ -104,6 +106,7 @@
         </div>
     </main>
 
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
     <script src="script.js"></script>
 </body>
 </html>

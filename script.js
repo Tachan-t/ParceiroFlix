@@ -1,12 +1,14 @@
 // ATENÇÃO: Substitua 'SUA_CHAVE_TMDB' pela sua chave de API real do TMDB.
-// Esta chave será usada para buscar os metadados (capa, título, ID, etc.).
 const TMDB_API_KEY = '62fd8e76492e4bdda5e40b8eb6520a00'; 
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 
-// CORREÇÃO: Variáveis Base URL para diferentes tipos de imagem
+// Variáveis Base URL (CRÍTICAS: Declaradas primeiro)
 const TMDB_IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/original'; 
 const TMDB_POSTER_BASE_URL = 'https://image.tmdb.org/t/p/w500'; 
 
+// NOVO BASE URL: IPTV-ORG (Fonte oficial e estável para streams)
+const IPTV_ORG_API_BASE = 'https://iptv-org.github.io/api'; 
+const REIDOSCANAIS_BASE_URL = 'https://api.reidoscanais.io'; 
 
 // Elementos HTML
 const searchInput = document.getElementById('search-input');
@@ -17,11 +19,12 @@ const heroCarousel = document.getElementById('hero-carousel');
 const catalogContainer = document.getElementById('catalog-container');
 const resultsContainer = document.getElementById('results-container');
 const playerContainer = document.getElementById('player-container');
-const videoPlayer = document.getElementById('video-player'); // <--- CORREÇÃO GARANTIDA!
+const videoPlayerDiv = document.getElementById('video-player');
 const playerTitle = document.getElementById('player-title');
 const backButton = document.getElementById('back-button');
 const playerSourceSelect = document.getElementById('player-source');
 const loadPlayerButton = document.getElementById('load-player-button');
+const logoContainer = document.querySelector('.logo-container'); 
 
 const moviesDropdown = document.getElementById('movies-dropdown');
 const tvDropdown = document.getElementById('tv-dropdown');
@@ -43,10 +46,9 @@ let currentCategory = {
     endpoint: null, title: null, page: 1, totalPages: 1
 };
 let currentSlide = 0; 
-
-// Variáveis de Gênero
 let movieGenres = [];
 let tvGenres = [];
+let iptvChannels = []; // Armazenará os dados combinados do IPTV-ORG
 
 
 // --- FUNÇÕES DE HERO BANNER ---
@@ -92,7 +94,6 @@ async function loadHeroBanner() {
 
         heroBannerContainer.style.display = 'block';
 
-        // Anexa listener ao botão do banner
         heroCarousel.querySelectorAll('.hero-watch-button').forEach(button => {
             button.addEventListener('click', (e) => {
                 const id = e.target.dataset.id;
@@ -102,7 +103,6 @@ async function loadHeroBanner() {
             });
         });
 
-        // Inicia a rotação
         if (trendingItems.length > 1) {
             setInterval(rotateBanner, 8000); 
         }
@@ -146,27 +146,20 @@ async function loadGenres() {
     }
 }
 
-/**
- * Popula os menus dropdown com os gêneros obtidos, mantendo os links fixos.
- */
 function populateDropdowns() {
     
-    // Adiciona divisor para filmes
     const movieSeparator = document.createElement('hr');
     moviesDropdown.appendChild(movieSeparator);
     
-    // Adiciona divisor para séries
     const tvSeparator = document.createElement('hr');
     tvDropdown.appendChild(tvSeparator);
     
-    // 1. Filmes (Adiciona a lista de gêneros abaixo dos fixos)
     movieGenres.forEach(genre => {
         const li = document.createElement('li');
         li.innerHTML = `<a href="#" data-endpoint="/discover/movie?with_genres=${genre.id}" data-title="${genre.name}">${genre.name}</a>`;
         moviesDropdown.appendChild(li);
     });
 
-    // 2. Séries (Adiciona a lista de gêneros abaixo dos fixos)
     tvGenres.forEach(genre => {
         const li = document.createElement('li');
         li.innerHTML = `<a href="#" data-endpoint="/discover/tv?with_genres=${genre.id}" data-title="${genre.name}">${genre.name}</a>`;
@@ -235,10 +228,10 @@ function resetView(targetContainerId) {
     }
     
     // Oculta/Exibe o banner
-    if (targetContainerId === 'catalog-container') {
-         heroBannerContainer.style.display = 'block';
+    if (targetContainerId === 'catalog-container' && currentCategory.endpoint !== 'live_tv') {
+        heroBannerContainer.style.display = 'block';
     } else {
-         heroBannerContainer.style.display = 'none';
+        heroBannerContainer.style.display = 'none';
     }
 }
 
@@ -324,6 +317,12 @@ function renderPagination(totalPages, currentPage, endpoint, title) {
  * Carrega filmes/séries baseados em um endpoint de categoria (VER TODOS / GRADE).
  */
 async function loadCategory(endpoint, title, page = 1) {
+    // Rota de TV ao Vivo
+    if (endpoint === 'live_tv') {
+        loadLiveTV();
+        return;
+    }
+
     resetView('results-container');
     resultsContainer.innerHTML = `<p>Carregando ${title}... (Página ${page})</p>`;
 
@@ -505,6 +504,12 @@ async function handleWatchClick(tmdbId, mediaType, mediaTitle) {
 
     resetView('player-container'); 
     playerTitle.textContent = mediaTitle;
+    
+    const playerOptionsDiv = playerContainer.querySelector('.player-options');
+    if(playerOptionsDiv) {
+        playerOptionsDiv.style.display = 'flex'; 
+    }
+    
     seriesSelectors.style.display = 'none'; 
 
     await getImdbId(mediaId, mediaType);
@@ -521,7 +526,7 @@ function createPlayer() {
     const source = playerSourceSelect.value;
     const { tmdbId, mediaType, imdbId, currentSeason, currentEpisode } = currentMedia;
 
-    videoPlayer.innerHTML = ''; 
+    videoPlayerDiv.innerHTML = ''; 
     let embedUrl = '';
     const typeParam = mediaType === 'movie' ? 'movie' : 'tv';
     
@@ -554,7 +559,7 @@ function createPlayer() {
     } else if (source === 'playerflixapi.com') {
         if (mediaType === 'movie') {
             if (!imdbId) {
-                videoPlayer.innerHTML = `<p>A fonte **playerflixapi.com** exige o ID do IMDB para filmes. Tente outra fonte.</p>`;
+                videoPlayerDiv.innerHTML = `<p>A fonte **playerflixapi.com** exige o ID do IMDB para filmes. Tente outra fonte.</p>`;
                 return;
             }
             embedUrl = `https://playerflixapi.com/filme/${imdbId}`;
@@ -563,27 +568,28 @@ function createPlayer() {
         }
     } else if (source === 'vidsrc.to') {
         if (!imdbId) {
-            videoPlayer.innerHTML = `<p>A fonte **vidsrc.to** exige o ID do IMDB, que não foi encontrado para este título. Tente outra fonte.</p>`;
+            videoPlayerDiv.innerHTML = `<p>A fonte **vidsrc.to** exige o ID do IMDB para filmes. Tente outra fonte.</p>`;
             return;
         }
         if (mediaType === 'movie') {
             embedUrl = `https://vidsrc.to/embed/movie/${imdbId}`;
         } else {
-             videoPlayer.innerHTML = `<p>A fonte **vidsrc.to** não suporta seleção direta de episódio. Tente outra opção.</p>`;
+             videoPlayerDiv.innerHTML = `<p>A fonte **vidsrc.to** não suporta seleção direta de episódio. Tente outra opção.</p>`;
              return;
         }
     } else {
-        videoPlayer.innerHTML = `<p>Fonte de player desconhecida.</p>`;
+        videoPlayerDiv.innerHTML = `<p>Fonte de player desconhecida.</p>`;
         return;
     }
 
     const iframe = document.createElement('iframe');
     iframe.src = embedUrl;
     iframe.allowFullscreen = true; 
+    iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture';
     iframe.style.width = '100%';
     iframe.style.height = '100%';
     
-    videoPlayer.appendChild(iframe);
+    videoPlayerDiv.appendChild(iframe);
 }
 
 async function showDetailsModal(tmdbId, mediaType) {
@@ -619,7 +625,236 @@ async function showDetailsModal(tmdbId, mediaType) {
 }
 
 
-// --- 4. EVENTOS ---
+// --- 4. FUNÇÕES TV AO VIVO (INTEGRAÇÃO IPTV-ORG) ---
+
+/**
+ * Funcao utilitária para buscar e mesclar os dados de IPTV-ORG.
+ * Versão FINAL: Busca canais, streams e LOGOS para garantir que as imagens apareçam.
+ */
+async function fetchAndCombineIPTVData() {
+    try {
+        // CORREÇÃO CRÍTICA: Busca os 3 arquivos essenciais: canais, streams E logos.
+        const [channelsResponse, streamsResponse, logosResponse] = await Promise.all([
+            fetch(`${IPTV_ORG_API_BASE}/channels.json`),
+            fetch(`${IPTV_ORG_API_BASE}/streams.json`),
+            fetch(`${IPTV_ORG_API_BASE}/logos.json`) 
+        ]);
+
+        if (!channelsResponse.ok || !streamsResponse.ok || !logosResponse.ok) {
+            throw new Error("Falha ao carregar um ou mais arquivos IPTV-ORG.");
+        }
+
+        const channelsData = await channelsResponse.json();
+        const streamsData = await streamsResponse.json();
+        const logosData = await logosResponse.json(); 
+        
+        // Mapeia canais e logos por ID para acesso rápido
+        const channelMap = new Map(channelsData.map(c => [c.id, c]));
+        // Mapeia logos pela ID do canal. Muitos canais têm várias logos; pegamos a primeira.
+        const logoMap = new Map();
+        logosData.forEach(logo => {
+            if (logo.channel && !logoMap.has(logo.channel)) {
+                logoMap.set(logo.channel, logo.url);
+            }
+        });
+
+
+        const combinedList = streamsData
+            // Filtra streams M3U8 válidos
+            .filter(stream => stream.url && stream.url.endsWith('.m3u8')) 
+            .map(stream => {
+                const channel = channelMap.get(stream.channel);
+                
+                if (!channel) return null; 
+
+                // Obtém a URL da logo diretamente do mapeamento de logos
+                const logoUrl = logoMap.get(channel.id);
+
+                return {
+                    id: stream.channel,
+                    name: channel.name,
+                    category: channel.categories.join(', ') || 'Geral',
+                    streamUrl: stream.url, 
+                    // Usa a URL garantida pelo logos.json
+                    logoUrl: logoUrl || 'placeholder_logo.png' 
+                };
+            })
+            .filter(item => item !== null)
+            // Remove duplicados
+            .filter((value, index, self) => 
+                index === self.findIndex((t) => (
+                    t.id === value.id
+                ))
+            ); 
+
+        return combinedList;
+
+    } catch (error) {
+        console.error('Erro CRÍTICO ao buscar e combinar dados do IPTV-ORG:', error);
+        return []; 
+    }
+}
+
+
+/**
+ * Carrega a lista de canais usando a nova fonte IPTV-ORG (TODOS OS PAÍSES).
+ */
+async function loadLiveTV() {
+    resetView('results-container'); 
+    resultsContainer.innerHTML = '<h2>TV ao Vivo</h2><p>Buscando lista de canais (IPTV-ORG)...</p>';
+
+    currentCategory.endpoint = 'live_tv'; 
+    currentCategory.title = 'TV ao Vivo';
+    
+    // Carrega os dados APENAS se ainda não estiverem na memória
+    if (iptvChannels.length === 0) {
+        iptvChannels = await fetchAndCombineIPTVData();
+    }
+
+    const channels = iptvChannels;
+
+    if (channels.length === 0) {
+        resultsContainer.innerHTML = `
+            <h2>TV ao Vivo</h2>
+            <p style="color: red;">Erro: Não foi possível carregar a lista de canais ativos do IPTV-ORG. Tente novamente mais tarde.</p>
+        `;
+        return;
+    }
+
+    // Renderiza a grade de canais com o novo título
+    resultsContainer.innerHTML = `<section class="catalog-section">
+        <h2>Todos os Canais Ativos (${channels.length} itens)</h2>
+        <div id="channels-grid" class="results-grid"></div>
+    </section>`;
+    
+    const channelsGrid = document.getElementById('channels-grid');
+
+    channels.forEach(channel => {
+        const card = document.createElement('div');
+        card.className = 'movie-card channel-card';
+        
+        const logoSrc = channel.logoUrl || 'placeholder_logo.png'; 
+        const channelId = channel.id; 
+        const channelName = channel.name || 'Canal Desconhecido';
+        const channelCategory = channel.category; 
+
+        card.innerHTML = `
+            <img src="${logoSrc}" 
+                 alt="${channelName}" 
+                 class="channel-logo" 
+                 loading="lazy"
+                 onerror="this.onerror=null; this.src='https://via.placeholder.com/200x200?text=Logo+N%C3%A3o+Encontrada'"> 
+            <div class="card-info">
+                <h3>${channelName}</h3> 
+                <p style="font-size: 0.9em; color: #ccc;">${channelCategory}</p>
+                <button class="watch-channel-button action-button primary-button" 
+                            data-channel-id="${channelId}" data-title="${channelName}" 
+                            style="width: 90%; margin-top: 10px;">
+                    ASSISTIR AO VIVO
+                </button>
+            </div>
+        `;
+        channelsGrid.appendChild(card);
+    });
+    
+    attachChannelListeners();
+}
+
+/**
+ * Anexa listeners para os botões de ASSISTIR AO VIVO.
+ */
+function attachChannelListeners() {
+    document.querySelectorAll('.watch-channel-button').forEach(button => {
+        button.onclick = null; 
+        button.onclick = (event) => {
+            const channelId = event.target.dataset.channelId;
+            const title = event.target.dataset.title;
+            
+            playLiveChannel(channelId, title); 
+        };
+    });
+}
+
+/**
+ * Carrega o canal de TV no player (USANDO SOMENTE HLS.JS).
+ */
+async function playLiveChannel(channelId, title) {
+    resetView('player-container');
+    playerTitle.textContent = title;
+    
+    const playerOptionsDiv = playerContainer.querySelector('.player-options');
+    if(playerOptionsDiv) {
+        playerOptionsDiv.style.display = 'none'; 
+    }
+    seriesSelectors.style.display = 'none'; 
+
+    videoPlayerDiv.innerHTML = `<p>Buscando URL do stream para ${title}...</p>`;
+
+    // Busca a URL M3U8 nos dados pré-carregados
+    const channel = iptvChannels.find(c => c.id === channelId);
+    const streamUrl = channel ? channel.streamUrl : null;
+
+    if (!streamUrl) {
+        videoPlayerDiv.innerHTML = `
+            <div style="padding: 30px; background-color: #2a2a2a; border-radius: 8px; max-width: 500px; margin: 50px auto; text-align: center; border: 1px solid red;">
+                <p style="color: red; font-size: 1.1em; margin-bottom: 15px;">
+                    ❌ Stream Indisponível
+                </p>
+                <p style="color: #ccc; font-size: 0.9em; margin-bottom: 20px;">
+                    Não foi possível encontrar a URL de stream M3U8 para **${title}** na base de dados IPTV-ORG.
+                </p>
+                <button onclick="loadLiveTV()" class="action-button primary-button" style="background-color: #555;">
+                    Voltar para a lista
+                </button>
+            </div>
+        `;
+        return;
+    }
+
+    // Tenta reproduzir o M3U8 via HLS.js
+    const video = document.createElement('video');
+    video.id = 'live-video-player';
+    video.controls = true;
+    video.autoplay = true; 
+    video.style.width = '100%';
+    video.style.height = '100%';
+    
+    videoPlayerDiv.innerHTML = '';
+    videoPlayerDiv.appendChild(video);
+    
+    if (typeof Hls !== 'undefined' && Hls.isSupported()) {
+        const hls = new Hls();
+        hls.loadSource(streamUrl);
+        hls.attachMedia(video);
+        hls.on(Hls.Events.MANIFEST_PARSED, function() {
+            video.play().catch(error => {
+                console.warn('Autoplay bloqueado pelo navegador.', error);
+                videoPlayerDiv.insertAdjacentHTML('beforeend', `
+                    <div class="stream-info-overlay" style="margin-top: 20px;">
+                        <p style="color: #ffcc00; font-weight: bold; margin-bottom: 5px;">
+                            ⚠️ CLIQUE NECESSÁRIO
+                        </p>
+                        <p style="color: #ccc; font-size: 0.9em; margin-bottom: 0;">
+                            O navegador bloqueou a reprodução automática. Clique no botão de Play no vídeo.
+                        </p>
+                    </div>
+                `);
+            });
+        });
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.src = streamUrl;
+        video.addEventListener('loadedmetadata', function() {
+            video.play();
+        });
+    } else {
+         videoPlayerDiv.innerHTML = `<p style="color: red; margin-top: 50px;">
+            Seu navegador não suporta o formato de stream (M3U8).
+        </p>`;
+    }
+}
+
+
+// --- 5. EVENTOS ---
 
 // Evento de navegação: Listener para os links
 mainNav.addEventListener('click', (event) => {
@@ -630,11 +865,18 @@ mainNav.addEventListener('click', (event) => {
 
         if (endpoint === 'catalog') {
             loadCatalog(); 
+        } else if (endpoint === 'live_tv') { 
+            loadLiveTV();
         } else {
-            // Se for um link de categoria/gênero, carrega a página 1
             loadCategory(endpoint, title, 1); 
         }
     }
+});
+
+// Evento: Clique na logo/título para ir para TV ao Vivo
+logoContainer.addEventListener('click', (event) => {
+    event.preventDefault();
+    loadLiveTV();
 });
 
 // Evento de busca no clique do botão
