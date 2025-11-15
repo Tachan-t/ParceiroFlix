@@ -13,7 +13,6 @@ header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    /* Linha de design moderna */
     border-bottom: none; 
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5); /* Sombra sutil */
     position: sticky; 
@@ -72,7 +71,7 @@ main {
     padding-top: 10px;
 }
 
-/* --- ESTILO PARA A BARRA DE NAVEGAÇÃO E DROPDOWNS (CORRIGIDO E MODERNO) --- */
+/* --- ESTILO PARA A BARRA DE NAVEGAÇÃO E DROPDOWNS --- */
 
 #main-nav {
     flex-grow: 1; 
@@ -109,7 +108,6 @@ main {
 .dropdown-toggle {
     font-weight: 500 !important; 
 }
-
 
 /* Base do Dropdown */
 .dropdown {
@@ -345,26 +343,19 @@ main {
 .details-button:hover { background-color: #555; }
 
 
-/* --- ESTILO PARA O PLAYER E MODAL --- */
+/* --- ESTILO PARA O PLAYER E MODAL (CONTROLES MODERNOS) --- */
+
 .player-view {
     text-align: center;
 }
 
-.player-options {
-    margin: 20px 0;
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    align-items: center;
-    gap: 10px;
-}
-
 #video-player {
     width: 100%;
-    max-width: 900px;
+    max-width: 950px; 
     margin: 20px auto;
     background-color: #000;
-    aspect-ratio: 16 / 9;
+    aspect-ratio: 16 / 9; 
+    position: relative; 
 }
 
 #video-player iframe {
@@ -373,7 +364,130 @@ main {
     border: none;
 }
 
-/* Modal de Detalhes */
+.player-options {
+    margin: 20px auto 40px; 
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 15px; 
+    background-color: #222;
+    padding: 15px 25px;
+    border-radius: 8px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+    max-width: fit-content; 
+}
+
+.player-options label {
+    display: none; 
+}
+
+.series-selectors-wrapper {
+    display: flex;
+    gap: 15px; 
+}
+
+/* Estilo Básico para Botões de Ação */
+.action-button {
+    border: none;
+    padding: 10px 20px; 
+    height: 40px; 
+    font-size: 1em;
+    font-weight: bold;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s, transform 0.1s;
+    white-space: nowrap; 
+}
+
+.action-button.primary-button {
+    background-color: #e50914; 
+    color: white;
+}
+
+.action-button.primary-button:hover {
+    background-color: #ff0b1a;
+    transform: translateY(-1px);
+}
+
+/* Container do Select Customizado */
+.custom-select-container {
+    display: flex;
+    align-items: center;
+}
+
+.custom-select-wrapper {
+    position: relative;
+    display: inline-block; 
+    border-radius: 4px;
+    background-color: #333;
+    border: 1px solid #444;
+    overflow: hidden; 
+    height: 40px; 
+    min-width: 140px; 
+    max-width: 200px; 
+}
+
+/* Esconde a seta nativa em Webkit/Chrome */
+.custom-select-wrapper::after {
+    content: '▼';
+    position: absolute;
+    top: 0;
+    right: 0;
+    padding: 10px 12px; 
+    background-color: #333;
+    color: #fff;
+    pointer-events: none;
+    transition: background-color 0.2s;
+    height: 100%; 
+    display: flex;
+    align-items: center; 
+    box-sizing: border-box; 
+}
+
+/* Garante que o select nativo ocupe a área e seja transparente para usabilidade */
+.styled-select {
+    appearance: none; 
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    
+    background-color: transparent;
+    color: white; /* Mantido branco para o texto no "botão" customizado */
+    padding: 10px 35px 10px 12px; 
+    border: none;
+    width: 100%;
+    height: 100%; 
+    cursor: pointer;
+    font-size: 1em;
+    outline: none;
+    position: relative;
+    z-index: 2; 
+    box-sizing: border-box; 
+}
+
+/* CORREÇÃO PARA A COR DO TEXTO NAS OPÇÕES QUANDO O DROPDOWN É ABERTO */
+.styled-select option {
+    background-color: white; /* Fundo branco para as opções nativas */
+    color: black;            /* Texto preto para as opções nativas */
+}
+
+
+/* Hover no wrapper para mudar cor da seta */
+.custom-select-wrapper:hover::after {
+    background-color: #4a4a4a;
+}
+.custom-select-wrapper:hover {
+    border-color: #e50914; 
+}
+
+/* Selects menores (Temporada/Episódio) */
+.custom-select-wrapper.small-select {
+    min-width: 90px; 
+    max-width: 100px; 
+}
+
+
+/* --- Modal de Detalhes --- */
 .modal {
     display: none; 
     position: fixed; 
@@ -471,4 +585,36 @@ main {
 .pagination-controls button:first-child, 
 .pagination-controls button:last-child {
     min-width: 80px; 
+}
+
+/* --- ESTILO PARA O BOTÃO VOLTAR REDONDO E MODERNO --- */
+.round-back-button {
+    background-color: #e50914; /* Cor primária do CineStream */
+    color: white;
+    border: none;
+    padding: 12px 18px; /* Mais padding para o formato redondo */
+    font-size: 1.1em; /* Um pouco maior */
+    font-weight: bold;
+    border-radius: 25px; /* Metade da altura total para ficar redondo */
+    cursor: pointer;
+    transition: background-color 0.2s, transform 0.2s, box-shadow 0.2s;
+    display: inline-flex; /* Para alinhar o ícone e o texto */
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 20px; /* Espaçamento com o conteúdo abaixo */
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4); /* Sombra para profundidade */
+    text-decoration: none; /* Em caso de ser um link no futuro */
+}
+
+.round-back-button:hover {
+    background-color: #ff0b1a; /* Cor mais clara ao passar o mouse */
+    transform: translateY(-2px); /* Efeito de "levantar" */
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.6); /* Sombra mais intensa */
+}
+
+/* Ajusta o texto da seta para ter um pequeno espaço */
+.round-back-button::before {
+    content: '←'; /* Caractere de seta para a esquerda */
+    margin-right: 8px; /* Espaço entre a seta e o texto "Voltar" */
+    font-size: 1.2em; /* Tamanho da seta ligeiramente maior */
 }

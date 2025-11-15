@@ -54,28 +54,41 @@
         <section id="results-container" class="results-grid" style="display: none;"></section>
 
         <section id="player-container" style="display: none;">
-            <button id="back-button" class="back-button">← Voltar</button>
+            <button id="back-button" class="round-back-button">Voltar</button>
             <h2 id="player-title">Título do Filme/Série</h2>
             
             <div class="player-options">
-                <label for="player-source">Fonte do Player:</label>
-                <select id="player-source">
-                    <option value="megaembed.com">MegaEmbed</option>
-                    <option value="vidsrc-embed.ru">VidSrc-Embed</option>
-                    <option value="2embed.top">2Embed</option>
-                    <option value="vidsrc.cc">VidSrc.cc</option>
-                    <option value="playerflixapi.com">PlayerFlix API</option>
-                    <option value="vidsrc.to">VidSrc.to (IMDB)</option>
-                </select>
-
-                <div id="series-selectors" style="display: none;">
-                    <label for="season-select">Temporada:</label>
-                    <select id="season-select"></select>
-                    <label for="episode-select">Episódio:</label>
-                    <select id="episode-select"></select>
+                <div class="custom-select-container">
+                    <label for="player-source">Fonte do Player:</label>
+                    <div class="custom-select-wrapper">
+                        <select id="player-source" class="styled-select">
+                            <option value="megaembed.com">MegaEmbed</option>
+                            <option value="vidsrc-embed.ru">VidSrc-Embed</option>
+                            <option value="2embed.top">2Embed</option>
+                            <option value="vidsrc.cc">VidSrc.cc</option>
+                            <option value="playerflixapi.com">PlayerFlix API</option>
+                            <option value="vidsrc.to">VidSrc.to (IMDB)</option>
+                        </select>
+                    </div>
                 </div>
                 
-                <button id="load-player-button" class="load-player-button">Carregar Player</button>
+                <div id="series-selectors" class="series-selectors-wrapper" style="display: none;">
+                    <div class="custom-select-container">
+                        <label for="season-select">Temporada:</label>
+                        <div class="custom-select-wrapper small-select">
+                            <select id="season-select" class="styled-select"></select>
+                        </div>
+                    </div>
+                    
+                    <div class="custom-select-container">
+                        <label for="episode-select">Episódio:</label>
+                        <div class="custom-select-wrapper small-select">
+                            <select id="episode-select" class="styled-select"></select>
+                        </div>
+                    </div>
+                </div>
+                
+                <button id="load-player-button" class="action-button primary-button">Carregar Player</button>
             </div>
 
             <div id="video-player">
