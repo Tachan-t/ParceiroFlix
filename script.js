@@ -6,7 +6,7 @@ const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 const TMDB_IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/original'; 
 const TMDB_POSTER_BASE_URL = 'https://image.tmdb.org/t/p/w500'; 
 
-// NOVO BASE URL: IPTV-ORG (Fonte oficial e estável para streams)
+// IPTV-ORG (Fonte oficial e estável para streams)
 const IPTV_ORG_API_BASE = 'https://iptv-org.github.io/api'; 
 const REIDOSCANAIS_BASE_URL = 'https://api.reidoscanais.io'; 
 
@@ -171,24 +171,7 @@ function populateDropdowns() {
 // --- 1. FUNÇÕES DE UTILIDADE E LISTENERS ---
 
 function attachListeners() {
-    document.querySelectorAll('.watch-button').forEach(button => {
-        button.onclick = null; 
-        button.onclick = (event) => {
-            const id = event.target.dataset.id;
-            const type = event.target.dataset.type;
-            const title = event.target.dataset.title;
-            handleWatchClick(id, type, title);
-        };
-    });
-    
-    document.querySelectorAll('.details-button').forEach(button => {
-        button.onclick = null; 
-        button.onclick = (event) => {
-            const id = event.target.dataset.id;
-            const type = event.target.dataset.type;
-            showDetailsModal(id, type);
-        };
-    });
+    // Mantido, mas não usado para cards de catálogo (Filmes/Séries)
 }
 
 async function getImdbId(tmdbId, mediaType) {
@@ -214,6 +197,9 @@ function resetView(targetContainerId) {
     catalogContainer.style.display = 'none';
     resultsContainer.style.display = 'none';
     playerContainer.style.display = 'none';
+    
+    // CORREÇÃO CRÍTICA: Garante que o Modal de Detalhes esteja sempre escondido ao resetar a view
+    detailsModal.style.display = 'none'; 
     
     if (targetContainerId !== 'catalog-container') {
         catalogContainer.innerHTML = '';
@@ -361,11 +347,10 @@ async function loadCategory(endpoint, title, page = 1) {
 
 
 /**
- * Exibe os resultados na tela.
+ * Exibe os resultados na tela (MODIFICADA PARA CLIQUE NO CARD).
  */
 function displayResults(results, container = resultsContainer, forcedType = null) {
     
-    // Mapeia e filtra os resultados
     const mappedResults = results.map(item => ({
         ...item,
         media_type: item.media_type || forcedType,
@@ -383,7 +368,6 @@ function displayResults(results, container = resultsContainer, forcedType = null
         return;
     }
 
-    // Limpa o container específico antes de renderizar
     container.innerHTML = '';
     
     // Renderiza os cards
@@ -392,27 +376,72 @@ function displayResults(results, container = resultsContainer, forcedType = null
         const title = item.title; 
         const mediaId = item.id;
         const posterUrl = `${TMDB_POSTER_BASE_URL}${item.poster_path}`;
-
+        
+        // --- Simulação dos Metadados para o Card (Ano e Nota) ---
+        const year = (item.release_date || item.first_air_date || '').substring(0, 4);
+        const imdbScore = item.vote_average ? item.vote_average.toFixed(1).replace('.', ',') : 'N/A';
+        
         const card = document.createElement('div');
         card.className = 'movie-card';
+        
+        // Renderiza a imagem e os metadados estáticos
         card.innerHTML = `
             <img src="${posterUrl}" alt="${title}">
             <div class="card-info">
                 <h3>${title}</h3>
-                <button class="watch-button" data-id="${mediaId}" data-type="${type}" data-title="${title}">
-                    Assistir
-                </button>
-                <button class="details-button" data-id="${mediaId}" data-type="${type}" style="background-color: #444; margin-top: 5px;">
-                    Detalhes
-                </button>
+                <p class="metadata-line">
+                    <span class="metadata-item">${year}</span>
+                    <span class="metadata-item imdb-score">IMDb ${imdbScore}</span>
+                </p>
+                <div class="card-actions">
+                    <button class="action-button icon-button details-button">i</button>
+                    <button class="action-button icon-button icon-save-button">&#128278;</button>
+                </div>
             </div>
         `;
         
+        // 1. Adiciona os dados ao card
+        card.setAttribute('data-id', mediaId);
+        card.setAttribute('data-type', type);
+        card.setAttribute('data-title', title);
+        
+        // 2. Evento CRÍTICO: Clique no card inteiro para ir para o player
+        card.addEventListener('click', function(e) {
+            // Verifica se o clique foi em um botão de detalhes para abrir o modal em vez do player
+            if (e.target.closest('.details-button') || e.target.closest('.icon-save-button')) {
+                 e.stopPropagation();
+                 const id = this.getAttribute('data-id');
+                 const type = this.getAttribute('data-type');
+                 showDetailsModal(id, type);
+                 return;
+            }
+
+            // Se for um Card de Filme/Série (clique na imagem ou área vazia), vai direto para o player
+            const id = this.getAttribute('data-id');
+            const type = this.getAttribute('data-type');
+            const mediaTitle = this.getAttribute('data-title');
+            
+            handleWatchClick(id, type, mediaTitle);
+        });
+        
+        // 3. Adiciona um listener extra para o botão 'i' caso o clique não propague corretamente
+        card.querySelector('.details-button').addEventListener('click', function(e) {
+            e.stopPropagation(); // Requisitado para evitar o clique no card
+            showDetailsModal(mediaId, type);
+        });
+        
+        card.querySelector('.icon-save-button').addEventListener('click', function(e) {
+            e.stopPropagation(); // Requisitado para evitar o clique no card
+            alert('Item salvo na sua lista!');
+        });
+
+
         container.appendChild(card);
     });
     
-    attachListeners();
+    attachChannelListeners();
 }
+
 
 /**
  * Função de busca manual (quando o usuário digita na busca).
@@ -445,7 +474,7 @@ async function searchMedia(query) {
 }
 
 
-// --- 3. FUNÇÕES DE PLAYER E MODAL (Demais Funções) ---
+// --- 3. FUNÇÕES DE PLAYER E MODAL ---
 
 async function loadSeriesOptions(tmdbId) {
     const url = `${TMDB_BASE_URL}/tv/${tmdbId}?api_key=${TMDB_API_KEY}&language=pt-BR`;
@@ -594,6 +623,7 @@ function createPlayer() {
 
 async function showDetailsModal(tmdbId, mediaType) {
     const typeEndpoint = mediaType === 'movie' ? 'movie' : 'tv';
+    // Buscamos o backdrop_path no mesmo endpoint
     const url = `${TMDB_BASE_URL}/${typeEndpoint}/${tmdbId}?api_key=${TMDB_API_KEY}&language=pt-BR`;
     
     detailsContent.innerHTML = '<p>Carregando detalhes...</p>';
@@ -606,34 +636,90 @@ async function showDetailsModal(tmdbId, mediaType) {
         const title = data.title || data.name;
         const sinopse = data.overview || 'Sinopse não disponível em Português.';
         const posterPath = data.poster_path;
+        const backdropPath = data.backdrop_path; // Novo: Captura o backdrop
+        
         const posterUrl = posterPath ? `${TMDB_POSTER_BASE_URL}${posterPath}` : '';
+        const backdropUrl = backdropPath ? `${TMDB_IMAGE_BASE_URL}${backdropPath}` : '';
+        
         const year = (data.release_date || data.first_air_date || '').substring(0, 4);
+        const seasonsCount = data.number_of_seasons ? `${data.number_of_seasons} Temporada${data.number_of_seasons > 1 ? 's' : ''}` : null;
+        const runtime = data.runtime ? `${data.runtime} min` : null;
+        
+        const imdbScore = data.vote_average ? data.vote_average.toFixed(1) : 'N/A';
+        const displayType = mediaType === 'movie' ? 'Filme' : 'Série';
+
+        // Atualiza o fundo do modal para o efeito backdrop
+        const modalContent = detailsModal.querySelector('.modal-content');
+        if (backdropUrl) {
+            modalContent.style.backgroundImage = `url(${backdropUrl})`;
+            modalContent.classList.add('has-backdrop');
+        } else {
+            modalContent.style.backgroundImage = 'none';
+            modalContent.classList.remove('has-backdrop');
+        }
+
+        // Metadados formatados
+        const metadataHtml = [];
+        if (seasonsCount) metadataHtml.push(`<span class="metadata-item">${seasonsCount}</span>`);
+        if (runtime) metadataHtml.push(`<span class="metadata-item">${runtime}</span>`);
+        if (year) metadataHtml.push(`<span class="metadata-item">${year}</span>`);
+        if (imdbScore !== 'N/A') metadataHtml.push(`<span class="metadata-item imdb-score">IMDb ${imdbScore}</span>`);
+
 
         detailsContent.innerHTML = `
-            ${posterPath ? `<img src="${posterUrl}" alt="Pôster de ${title}">` : ''}
-            <h3>${title} (${year})</h3>
-            <p><strong>Tipo:</strong> ${mediaType === 'movie' ? 'Filme' : 'Série de TV'}</p>
-            <p><strong>Nota (TMDB):</strong> ${data.vote_average ? data.vote_average.toFixed(1) : 'N/A'}</p>
-            <p><strong>Sinopse:</strong> ${sinopse}</p>
+            <div class="modal-info-container">
+                <img src="${posterUrl}" alt="Pôster de ${title}" class="modal-poster">
+                <div class="modal-text-content">
+                    
+                    <h3>${title}</h3>
+                    
+                    <p class="modal-metadata">
+                        ${metadataHtml.join('\n')}
+                    </p>
+                    
+                    <p class="modal-sinopse">${sinopse}</p>
+
+                    <div class="modal-actions">
+                        <button class="watch-button action-button primary-button" 
+                                data-id="${tmdbId}" data-type="${mediaType}" data-title="${title}">
+                            ▶︎ Assistir
+                        </button>
+                        <button class="action-button icon-button">
+                            <span class="icon-save">i</span>
+                        </button>
+                    </div>
+
+                </div>
+            </div>
+            
             <div style="clear: both;"></div>
         `;
         
+        // Reconecta o listener para o botão Assistir no modal
+        detailsContent.querySelector('.watch-button').addEventListener('click', (e) => {
+            const id = e.target.dataset.id;
+            const type = e.target.dataset.type;
+            const title = e.target.dataset.title;
+            // Fecha o modal e inicia o player
+            detailsModal.style.display = 'none';
+            handleWatchClick(id, type, title);
+        });
+
     } catch (error) {
         console.error('Erro ao carregar detalhes:', error);
         detailsContent.innerHTML = `<p>Erro ao carregar detalhes: ${error.message}</p>`;
+        detailsModal.querySelector('.modal-content').classList.remove('has-backdrop');
+        detailsModal.querySelector('.modal-content').style.backgroundImage = 'none';
     }
 }
 
 
-// --- 4. FUNÇÕES TV AO VIVO (INTEGRAÇÃO IPTV-ORG) ---
-
 /**
- * Funcao utilitária para buscar e mesclar os dados de IPTV-ORG.
- * Versão FINAL: Busca canais, streams e LOGOS para garantir que as imagens apareçam.
+ * Função para buscar e mesclar os dados de IPTV-ORG.
  */
 async function fetchAndCombineIPTVData() {
     try {
-        // CORREÇÃO CRÍTICA: Busca os 3 arquivos essenciais: canais, streams E logos.
+        // Busca os 3 arquivos essenciais: canais, streams E logos.
         const [channelsResponse, streamsResponse, logosResponse] = await Promise.all([
             fetch(`${IPTV_ORG_API_BASE}/channels.json`),
             fetch(`${IPTV_ORG_API_BASE}/streams.json`),
@@ -731,6 +817,7 @@ async function loadLiveTV() {
 
     channels.forEach(channel => {
         const card = document.createElement('div');
+        // Adiciona a classe channel-card
         card.className = 'movie-card channel-card';
         
         const logoSrc = channel.logoUrl || 'placeholder_logo.png'; 
@@ -738,6 +825,7 @@ async function loadLiveTV() {
         const channelName = channel.name || 'Canal Desconhecido';
         const channelCategory = channel.category; 
 
+        // Cards de TV Ao Vivo usam o card-info original (sem a lógica de hover)
         card.innerHTML = `
             <img src="${logoSrc}" 
                  alt="${channelName}" 

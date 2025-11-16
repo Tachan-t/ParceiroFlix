@@ -1,42 +1,45 @@
+/* No início do style.css: Importação da fonte para uma experiência moderna */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+
 body {
-    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-family: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif; 
     margin: 0;
     padding: 0;
     background-color: #141414; /* Fundo escuro */
     color: #fff;
+    line-height: 1.5; /* Aumenta a legibilidade */
 }
 
-/* --- ESTILO DO HEADER E LOGO (CineStream) --- */
+/* --- ESTILO DO HEADER E LOGO --- */
 header {
     background-color: #000;
     padding: 20px;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    /* Linha de design moderna */
-    border-bottom: none; 
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5); /* Sombra sutil */
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
     position: sticky; 
     top: 0;
-    z-index: 5;
+    z-index: 15; /* Aumenta o z-index para garantir que fique acima do zoom do card */
 }
 
 .logo-container {
     display: flex;      
     align-items: center; 
     margin-right: 30px;  
-    cursor: pointer; /* Adicionado cursor para indicar clicável */
+    cursor: pointer; 
 }
 
 .header-logo {
-    height: 40px; /* Tamanho da sua logo BUARQUE (1).png */
+    height: 40px; 
     width: auto;
     margin-right: 10px; 
 }
 
 .site-title {
     color: #e50914; 
-    font-size: 2em; 
+    font-size: 2.4em; /* Maior e mais marcante */
+    font-weight: 700; 
     margin: 0; 
 }
 
@@ -73,58 +76,49 @@ main {
     padding-top: 10px;
 }
 
-/* --- ESTILO PARA A BARRA DE NAVEGAÇÃO E DROPDOWNS --- */
-
+/* --- ESTILO PARA A BARRA DE NAVEGAÇÃO E DROPDOWNS (Mantido) --- */
 #main-nav {
     flex-grow: 1; 
     padding-left: 30px;
 }
 
-/* O MENU PRINCIPAL (ul) é flexbox e horizontal */
 #main-nav > ul { 
     list-style: none;
     padding: 0;
     margin: 0;
     display: flex; 
-    gap: 25px; /* Mais espaçamento */
+    gap: 25px; 
 }
 
-/* Links Principais (Início, Filmes, Séries, Populares) */
 #main-nav > ul > li > a {
-    color: #f1f1f1; /* Cor sutil */
-    text-decoration: none; /* Remove o sublinhado padrão */
+    color: #f1f1f1; 
+    text-decoration: none; 
     font-size: 1.1em; 
     font-weight: 400; 
     transition: color 0.2s, border-bottom 0.2s;
     padding-bottom: 5px; 
 }
 
-/* Hover e Link Ativo */
 #main-nav > ul > li > a:hover,
 #main-nav > ul > li > a.active {
-    color: #e50914; /* Cor de destaque ao passar o mouse */
-    border-bottom: 2px solid #e50914; /* Linha de destaque */
+    color: #e50914; 
+    border-bottom: 2px solid #e50914; 
 }
 
-/* Estilo para o texto do Dropdown (Filmes ▼, Séries ▼) */
 .dropdown-toggle {
     font-weight: 500 !important; 
 }
 
-/* Base do Dropdown */
 .dropdown {
     position: relative; 
 }
 
-/* O menu dropdown (ul) é vertical e estilizado */
 .dropdown-menu {
     display: none; 
     position: absolute;
     top: 100%; 
     left: 0;
     min-width: 200px;
-    
-    /* Estilo Moderno/Fluido */
     background-color: #1a1a1a; 
     border: none; 
     border-radius: 6px; 
@@ -134,12 +128,10 @@ main {
     z-index: 10; 
 }
 
-/* Exibir o dropdown ao passar o mouse sobre o <li> pai */
 .dropdown:hover .dropdown-menu {
     display: block; 
 }
 
-/* Faz com que cada item do dropdown (li) seja uma linha vertical */
 .dropdown-menu li {
     padding: 0;
     margin: 0;
@@ -168,7 +160,7 @@ main {
 }
 
 
-/* --- ESTILO PARA O HERO BANNER --- */
+/* --- ESTILO PARA O HERO BANNER (Mantido) --- */
 #hero-banner-container {
     width: 100%;
     height: 80vh; 
@@ -251,22 +243,32 @@ main {
 }
 
 .catalog-section h2 {
-    font-size: 1.5em;
-    margin-bottom: 10px;
-    color: #fff;
-    border-left: 5px solid #e50914;
-    padding-left: 10px;
+    font-size: 1.8em; /* Títulos maiores */
+    font-weight: 600; 
+    margin-bottom: 15px;
+    color: #e5e5e5;
+    border-left: none; 
+    padding-left: 0;
+    margin-top: 30px; 
 }
 
-/* Container do Carrossel (Layout Horizontal) */
+/* Container do Carrossel (Layout Horizontal - Otimizado para Netflix) */
 .carousel-row {
     display: flex;
-    overflow-x: auto; 
+    overflow-x: scroll; 
     overflow-y: hidden;
-    padding-bottom: 10px;
-    gap: 10px; 
-    scrollbar-width: thin;
-    scrollbar-color: #e50914 #333;
+    padding: 10px 0;
+    gap: 10px; /* Espaçamento entre cards */
+    
+    /* UX CRÍTICA: Esconde a barra de rolagem (WebKit e Firefox) */
+    -ms-overflow-style: none; /* IE and Edge */
+    scrollbar-width: none; /* Firefox */
+    
+    scroll-behavior: smooth; /* Rolagem suave */
+}
+
+.carousel-row::-webkit-scrollbar {
+    display: none; /* Esconde em Chrome/Safari */
 }
 
 /* Container de GRIDE (Layout Colunas/Ver Todos/Busca) */
@@ -280,16 +282,21 @@ main {
 }
 
 
-/* Card de Filme/Série */
+/* Card de Filme/Série (Estilo Netflix) */
 .movie-card {
-    background-color: #222;
-    border-radius: 8px;
-    overflow: hidden;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
-    transition: transform 0.2s, box-shadow 0.2s;
+    background-color: transparent; 
+    border-radius: 4px; 
+    box-shadow: none;
+    transition: transform 0.25s ease-in-out, box-shadow 0.25s;
     cursor: pointer;
+    position: relative; 
+    
+    width: 100%;
     min-width: 200px; 
-    max-width: 200px; 
+    max-width: 200px;
+    
+    overflow: hidden; 
+    z-index: 1; /* Padrão */
 }
 
 /* Para o layout de grade, permite que os cards usem o espaço total da coluna */
@@ -299,72 +306,314 @@ main {
 }
 
 
-/* Efeito de zoom ao passar o mouse */
+/* Efeito de ZOOM (Elevação) no Hover */
 .movie-card:hover {
-    transform: scale(1.05);
-    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.7);
-    z-index: 2; 
+    transform: scale(1.05); 
+    z-index: 10; /* Fica acima dos vizinhos */
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.8); /* Sombra intensa na elevação */
+    border: 1px solid rgba(255, 255, 255, 0.1); /* Borda sutil no hover */
 }
 
 .movie-card img {
     width: 100%;
     height: 300px; 
     object-fit: cover; 
+    border-radius: 4px; /* Cantos suaves na capa */
     display: block;
 }
 
+/* --- Metadados Estáticos (VISÍVEL SÓ NO HOVER) --- */
+
 .card-info {
-    padding: 10px;
-    text-align: center;
+    position: absolute; /* Torna o card-info flutuante */
+    bottom: 0;
+    left: 0;
+    right: 0;
+    
+    /* Fundo escuro e opaco como no seu exemplo */
+    background-color: rgba(34, 34, 34, 0.95); 
+    padding: 15px; 
+    
+    /* Gradiente para que o topo fique menos abrupto */
+    background: linear-gradient(to top, rgba(34, 34, 34, 1) 0%, rgba(34, 34, 34, 0.95) 40%, rgba(34, 34, 34, 0.7) 100%);
+    
+    text-align: left; 
+    
+    /* === CORREÇÃO CRÍTICA PARA HOVER: Oculta por padrão === */
+    opacity: 0; 
+    transition: opacity 0.25s ease-in-out; 
 }
+
+/* Ação que torna o pop-up visível no hover */
+.movie-card:hover .card-info {
+    opacity: 1;
+}
+
+/* Garante que o card de TV AO VIVO (que não deve ter hover) esteja sempre visível */
+.channel-card .card-info {
+    opacity: 1;
+    position: relative; /* Ajuste para TV ao vivo ficar estático abaixo da logo */
+    background: none; /* Remove o gradiente de hover */
+    background-color: #222; /* Fundo fixo para TV ao Vivo */
+    padding: 10px; /* Ajuste padding para TV ao Vivo */
+}
+
 
 .card-info h3 {
-    font-size: 1.1em;
-    margin: 5px 0 10px;
-    height: 40px; 
-    overflow: hidden;
+    font-size: 1.4em; /* Tamanho do título do pop-up */
+    font-weight: 700;
+    margin: 0 0 10px 0;
+    line-height: 1.1;
+    height: auto; /* Permite múltiplas linhas */
+    color: #fff;
 }
 
-.watch-button, .details-button {
-    background-color: #e50914;
+/* Estilo para a linha de metadados (Ano | IMDb) */
+.metadata-line {
+    font-size: 0.9em;
+    color: #f1f1f1;
+    margin: 0 0 15px 0;
+    display: flex;
+    align-items: center;
+}
+
+.metadata-line .metadata-item {
+    margin-right: 10px;
+    padding-right: 10px;
+    border-right: 1px solid rgba(255, 255, 255, 0.4); 
+}
+
+.metadata-line .metadata-item:last-child {
+    border-right: none;
+    padding-right: 0;
+}
+
+.metadata-line .imdb-score {
+    color: #ffcc00;
+    font-weight: 700;
+}
+
+/* --- Botões de Ação (i, bookmark) --- */
+.card-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+/* Os botões icon-button já são circulares e com fundo escuro. */
+
+.card-actions .icon-button {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background-color: rgba(255, 255, 255, 0.1);
     color: white;
-    border: none;
-    padding: 8px;
-    width: 48%; 
-    border-radius: 4px;
+    font-size: 1em;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     cursor: pointer;
-    font-weight: bold;
-    transition: background-color 0.3s;
+    transition: background-color 0.2s;
+    flex-shrink: 0;
 }
 
-.details-button {
-    background-color: #444;
+/* Opcional: Estilo específico para o ícone de salvar (para ajuste fino) */
+.card-actions .icon-save-button span {
+    font-family: Arial, sans-serif; /* Garante que o ícone apareça corretamente */
+    font-weight: normal;
+    padding-top: 2px; /* Pequeno ajuste de alinhamento vertical */
 }
 
-.watch-button:hover { background-color: #ff0b1a; }
-.details-button:hover { background-color: #555; }
 
-/* --- Novo Estilo: TV ao Vivo / Player de Embed --- */
-/* Card de TV ao vivo */
+/* --- ESTILO PARA TV AO VIVO (Canais) --- */
 .channel-card {
     height: auto; 
     max-width: 220px; 
     min-width: 180px;
 }
 
-.channel-card .card-info {
-    padding: 15px 10px;
-}
-
 .channel-logo {
     padding: 10px; 
     background-color: #000; 
     height: 200px;
-    object-fit: contain;
+    object-fit: contain; 
 }
 
 
-/* --- ESTILO PARA O PLAYER E MODAL (CONTROLES MODERNOS) --- */
+/* Estilo para Botões de Canal (Sempre Visível) */
+.channel-card .watch-channel-button {
+    display: block !important;
+    width: 100% !important;
+    margin-top: 10px;
+}
+
+
+/* --- Modal de Detalhes (Refatoração para Estilo Moderno) --- */
+
+.modal {
+    display: none !important; /* CORREÇÃO FINAL: Força a ocultação */
+    z-index: 100; 
+    position: fixed; /* Adicionado explicitamente */
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: auto; 
+    background-color: rgba(0,0,0,0.8); 
+}
+
+.modal-content {
+    background-color: #1a1a1a; 
+    margin: 3% auto; 
+    padding: 0; 
+    border: none; 
+    width: 90%;
+    max-width: 800px; 
+    border-radius: 10px;
+    position: relative;
+    overflow: hidden; 
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.9);
+    
+    background-size: cover;
+    background-position: center;
+    
+    min-height: 450px; 
+}
+
+.modal-content.has-backdrop::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    backdrop-filter: blur(5px); 
+    -webkit-backdrop-filter: blur(5px);
+    
+    background: linear-gradient(to right, rgba(0,0,0,0.85) 40%, rgba(0,0,0,0.5) 70%, transparent 100%);
+    z-index: 1;
+}
+
+.close-button {
+    position: absolute;
+    top: 10px;
+    right: 15px;
+    color: #fff;
+    opacity: 0.8;
+    z-index: 10; 
+    font-size: 32px;
+    background: rgba(20, 20, 20, 0.7);
+    border-radius: 50%;
+    width: 35px;
+    height: 35px;
+    line-height: 30px;
+    text-align: center;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+.close-button:hover,
+.close-button:focus {
+    opacity: 1;
+    color: #e50914;
+}
+
+#details-content {
+    position: relative;
+    z-index: 5; 
+    padding: 30px;
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+}
+
+.modal-poster {
+    width: 180px; 
+    height: auto;
+    border-radius: 8px;
+    margin-right: 30px;
+    object-fit: cover;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
+}
+
+.modal-text-content {
+    flex-grow: 1;
+}
+
+#details-content h3 {
+    font-size: 2.2em;
+    font-weight: 700;
+    margin-top: 0;
+    margin-bottom: 10px;
+    color: #fff;
+}
+
+.modal-metadata {
+    font-size: 1em;
+    font-weight: 500;
+    color: #ccc;
+    margin-bottom: 20px;
+}
+
+.metadata-item {
+    margin-right: 15px;
+    padding-right: 15px;
+    border-right: 1px solid #444;
+}
+
+.metadata-item:last-child {
+    border-right: none;
+    padding-right: 0;
+}
+
+.imdb-score {
+    color: #ffcc00; 
+    font-weight: bold;
+}
+
+.modal-sinopse {
+    font-size: 1em;
+    color: #e5e5e5;
+    line-height: 1.6;
+    max-height: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 25px;
+}
+
+.modal-actions {
+    display: flex;
+    gap: 15px;
+    align-items: center;
+}
+
+.modal-actions .primary-button {
+    padding: 12px 25px;
+    font-size: 1.1em;
+    min-width: 150px;
+}
+
+.modal-actions .icon-button {
+    width: 45px;
+    height: 45px;
+    border-radius: 50%;
+    background-color: rgba(255, 255, 255, 0.1);
+    color: #fff;
+    font-size: 1.2em;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s;
+}
+
+.modal-actions .icon-button:hover {
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+
+/* --- ESTILO PARA O PLAYER E MODAL (Geral) --- */
 
 .player-view {
     text-align: center;
@@ -390,10 +639,9 @@ main {
     border: none;
 }
 
-/* Estilo para o aviso de stream (UX) */
 .stream-info-overlay {
-    background-color: rgba(30, 30, 30, 0.9); /* Fundo escuro semi-transparente */
-    color: #ffcc00; /* Cor de aviso */
+    background-color: rgba(30, 30, 30, 0.9); 
+    color: #ffcc00; 
     padding: 10px;
     border-radius: 4px;
     margin-top: 15px;
@@ -408,11 +656,10 @@ main {
     margin: 0;
 }
 
-/* Estilo para o elemento VIDEO (usado com HLS.js) */
 #live-video-player {
     width: 100%;
     height: 100%;
-    object-fit: contain; /* Garante que o vídeo se ajuste sem cortar */
+    object-fit: contain; 
 }
 
 
@@ -462,7 +709,7 @@ main {
     transform: translateY(-1px);
 }
 
-/* Botão Voltar Redondo e Estilizado */
+/* Botão Voltar */
 .round-back-button {
     background-color: #e50914; 
     color: white;
@@ -487,7 +734,6 @@ main {
     box-shadow: 0 6px 12px rgba(0, 0, 0, 0.6); 
 }
 
-/* Ajusta o texto da seta para ter um pequeno espaço */
 .round-back-button::before {
     content: '←'; 
     margin-right: 8px; 
@@ -495,7 +741,7 @@ main {
 }
 
 
-/* Container do Select Customizado */
+/* --- Estilo Selects (Geral) --- */
 .custom-select-container {
     display: flex;
     align-items: center;
@@ -513,7 +759,6 @@ main {
     max-width: 200px; 
 }
 
-/* Esconde a seta nativa em Webkit/Chrome */
 .custom-select-wrapper::after {
     content: '▼';
     position: absolute;
@@ -530,12 +775,10 @@ main {
     box-sizing: border-box; 
 }
 
-/* Garante que o select nativo ocupe a área e seja transparente para usabilidade */
 .styled-select {
     appearance: none; 
     -webkit-appearance: none;
     -moz-appearance: none;
-    
     background-color: transparent;
     color: white; 
     padding: 10px 35px 10px 12px; 
@@ -550,14 +793,11 @@ main {
     box-sizing: border-box; 
 }
 
-/* CORREÇÃO PARA A COR DO TEXTO NAS OPÇÕES QUANDO O DROPDOWN É ABERTO */
 .styled-select option {
     background-color: white; 
     color: black;            
 }
 
-
-/* Hover no wrapper para mudar cor da seta */
 .custom-select-wrapper:hover::after {
     background-color: #4a4a4a;
 }
@@ -565,71 +805,13 @@ main {
     border-color: #e50914; 
 }
 
-/* Selects menores (Temporada/Episódio) */
 .custom-select-wrapper.small-select {
     min-width: 90px; 
     max-width: 100px; 
 }
 
 
-/* --- Modal de Detalhes --- */
-.modal {
-    display: none; 
-    position: fixed; 
-    z-index: 10; 
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 100%;
-    overflow: auto; 
-    background-color: rgba(0,0,0,0.8); 
-}
-
-.modal-content {
-    background-color: #141414;
-    margin: 5% auto; 
-    padding: 20px;
-    border: 1px solid #e50914;
-    width: 80%;
-    max-width: 700px;
-    border-radius: 10px;
-    position: relative;
-    box-shadow: 0 5px 15px rgba(0,0,0,0.5);
-}
-
-.close-button {
-    color: #aaa;
-    float: right;
-    font-size: 28px;
-    font-weight: bold;
-}
-
-.close-button:hover,
-.close-button:focus {
-    color: #e50914;
-    text-decoration: none;
-    cursor: pointer;
-}
-
-#details-content h3 {
-    color: #fff;
-    font-size: 2em;
-    margin-top: 0;
-}
-
-#details-content p {
-    line-height: 1.6;
-    color: #ccc;
-}
-
-#details-content img {
-    max-width: 150px;
-    float: left;
-    margin-right: 20px;
-    border-radius: 5px;
-}
-
-/* Paginação */
+/* Paginação (Geral) */
 .pagination-controls {
     display: flex;
     justify-content: center;
@@ -670,4 +852,59 @@ main {
 .pagination-controls button:first-child, 
 .pagination-controls button:last-child {
     min-width: 80px; 
+}
+
+
+/* --- Responsividade (Para dispositivos móveis) --- */
+@media (max-width: 768px) {
+    header {
+        flex-direction: column;
+        padding: 15px;
+    }
+
+    /* Oculta navegação principal no mobile para dar espaço */
+    #main-nav {
+        display: none;
+    }
+    
+    .search-container {
+        width: 100%;
+        margin-top: 15px;
+    }
+
+    .search-container input {
+        flex-grow: 1;
+    }
+
+    main {
+        padding: 10px;
+    }
+
+    /* Cards e Carrossel em Mobile */
+    .movie-card {
+        min-width: 150px; 
+        max-width: 150px;
+    }
+
+    .movie-card img {
+        height: 225px; 
+    }
+
+    .hero-content {
+        padding: 20px;
+    }
+    
+    .hero-content h2 {
+        font-size: 1.8em;
+    }
+    
+    .hero-content p {
+        display: none; 
+    }
+
+    /* Layout da Grade de Canais/Busca */
+    .results-grid {
+        grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+        gap: 10px;
+    }
 }
