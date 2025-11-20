@@ -252,24 +252,80 @@ main {
     margin-top: 30px; 
 }
 
-/* Container do Carrossel (Layout Horizontal - Otimizado para Netflix) */
+/* Novo: Contêiner que alinha o título e os botões de navegação */
+.catalog-section-header {
+    display: flex;
+    justify-content: space-between; 
+    align-items: center; 
+    margin-bottom: 15px; 
+    padding-right: 0; 
+}
+
+.catalog-section-header h2 {
+    margin-top: 0; 
+    margin-bottom: 0; 
+}
+
+/* Agrupamento dos botões de navegação */
+.carousel-nav-controls {
+    display: flex; 
+    gap: 10px; 
+    align-items: center; 
+}
+
+/* Container do Carrossel que contém a linha de rolagem */
+.carousel-container {
+    position: relative;
+    overflow: hidden; 
+}
+
+/* Container de Rolagem (Onde os cards vivem) */
 .carousel-row {
     display: flex;
     overflow-x: scroll; 
     overflow-y: hidden;
     padding: 10px 0;
-    gap: 10px; /* Espaçamento entre cards */
+    gap: 10px; 
     
-    /* UX CRÍTICA: Esconde a barra de rolagem (WebKit e Firefox) */
-    -ms-overflow-style: none; /* IE and Edge */
-    scrollbar-width: none; /* Firefox */
-    
-    scroll-behavior: smooth; /* Rolagem suave */
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+    scroll-behavior: smooth; 
 }
 
 .carousel-row::-webkit-scrollbar {
-    display: none; /* Esconde em Chrome/Safari */
+    display: none; 
 }
+
+/* Estilo dos Botões de Navegação (Setas) */
+.nav-button {
+    position: static; 
+    top: auto;
+    transform: none;
+    height: 40px; 
+    width: 40px; 
+    
+    border-radius: 50%; 
+    background-color: rgba(255, 255, 255, 0.1); 
+    color: white;
+    font-size: 1.5em; 
+    font-weight: 500;
+    cursor: pointer;
+    opacity: 0.8;
+    transition: opacity 0.2s, background-color 0.2s, transform 0.2s;
+    z-index: 12; 
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(255, 255, 255, 0.2); 
+}
+
+.nav-button:hover {
+    opacity: 1;
+    background-color: rgba(255, 255, 255, 0.2);
+    transform: scale(1.1); 
+    border-color: rgba(255, 255, 255, 0.5);
+}
+
 
 /* Container de GRIDE (Layout Colunas/Ver Todos/Busca) */
 #results-container.results-grid, 
@@ -339,7 +395,7 @@ main {
     
     text-align: left; 
     
-    /* === CORREÇÃO CRÍTICA PARA HOVER: Oculta por padrão === */
+    /* === LÓGICA DE HOVER: Oculta por padrão === */
     opacity: 0; 
     transition: opacity 0.25s ease-in-out; 
 }
@@ -352,10 +408,10 @@ main {
 /* Garante que o card de TV AO VIVO (que não deve ter hover) esteja sempre visível */
 .channel-card .card-info {
     opacity: 1;
-    position: relative; /* Ajuste para TV ao vivo ficar estático abaixo da logo */
-    background: none; /* Remove o gradiente de hover */
-    background-color: #222; /* Fundo fixo para TV ao Vivo */
-    padding: 10px; /* Ajuste padding para TV ao Vivo */
+    position: relative; 
+    background: none; 
+    background-color: #222; 
+    padding: 10px; 
 }
 
 
@@ -364,7 +420,7 @@ main {
     font-weight: 700;
     margin: 0 0 10px 0;
     line-height: 1.1;
-    height: auto; /* Permite múltiplas linhas */
+    height: auto; 
     color: #fff;
 }
 
@@ -400,8 +456,6 @@ main {
     align-items: center;
 }
 
-/* Os botões icon-button já são circulares e com fundo escuro. */
-
 .card-actions .icon-button {
     width: 40px;
     height: 40px;
@@ -418,11 +472,23 @@ main {
     flex-shrink: 0;
 }
 
-/* Opcional: Estilo específico para o ícone de salvar (para ajuste fino) */
-.card-actions .icon-save-button span {
-    font-family: Arial, sans-serif; /* Garante que o ícone apareça corretamente */
-    font-weight: normal;
-    padding-top: 2px; /* Pequeno ajuste de alinhamento vertical */
+.card-actions .icon-button:hover {
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Ícone de Favoritos */
+.icon-save-button .icon-save {
+    font-size: 1.2em; 
+    transition: color 0.2s, transform 0.2s;
+    line-height: 1;
+    display: inline-block;
+    font-weight: bold; /* Garante que o coração seja renderizado corretamente */
+}
+
+/* Cor do coração quando FAVORITADO (Preenchido) */
+.icon-save-button .icon-save.is-favorite {
+    color: #e50914; 
+    transform: scale(1.1);
 }
 
 
@@ -440,7 +506,6 @@ main {
     object-fit: contain; 
 }
 
-
 /* Estilo para Botões de Canal (Sempre Visível) */
 .channel-card .watch-channel-button {
     display: block !important;
@@ -452,9 +517,9 @@ main {
 /* --- Modal de Detalhes (Refatoração para Estilo Moderno) --- */
 
 .modal {
-    display: none !important; /* CORREÇÃO FINAL: Força a ocultação */
+    display: none !important; /* CORREÇÃO FINAL: Força a ocultação do modal */
     z-index: 100; 
-    position: fixed; /* Adicionado explicitamente */
+    position: fixed; 
     left: 0;
     top: 0;
     width: 100%;
