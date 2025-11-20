@@ -1,3562 +1,619 @@
-// ATENÇÃO: Substitua 'SUA_CHAVE_TMDB' pela sua chave de API real do TMDB.
-const TMDB_API_KEY = '62fd8e76492e4bdda5e40b8eb6520a00'; 
+/* script.js - Versão completa revisada
+   - Carregamento do catálogo, hero com fallback, gêneros, busca, detalhes, player, live TV.
+   - Paginação para categorias (currentCategoryEndpoint, currentCategoryPage, totalCategoryPages).
+   - Proteções defensivas (try/catch, checagens de elementos).
+   - Comentários e pontos fáceis de ajustar.
+*/
+
+/* CONFIG */
+const TMDB_API_KEY = '62fd8e76492e4bdda5e40b8eb6520a00'; // substitua pela sua chave se necessário
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
+const TMDB_IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/original';
+const TMDB_POSTER_BASE_URL = 'https://image.tmdb.org/t/p/w500';
+const IPTV_ORG_API_BASE = 'https://iptv-org.github.io/api';
 
-// Variáveis Base URL (CRÍTICAS: Declaradas primeiro)
-const TMDB_IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/original'; 
-const TMDB_POSTER_BASE_URL = 'https://image.tmdb.org/t/p/w500'; 
-
-// IPTV-ORG (Fonte oficial e estável para streams)
-const IPTV_ORG_API_BASE = 'https://iptv-org.github.io/api'; 
-const REIDOSCANAIS_BASE_URL = 'https://api.reidoscanais.io'; 
-
-// Elementos HTML
+/* ELEMENTS (pega referências do DOM) */
+const menuToggle = document.getElementById('menu-toggle');
+const mainNav = document.getElementById('main-nav');
 const searchInput = document.getElementById('search-input');
 const searchButton = document.getElementById('search-button');
-const mainNav = document.getElementById('main-nav'); 
-const heroBannerContainer = document.getElementById('hero-banner-container'); 
+const heroBannerContainer = document.getElementById('hero-banner-container');
 const heroCarousel = document.getElementById('hero-carousel');
 const catalogContainer = document.getElementById('catalog-container');
 const resultsContainer = document.getElementById('results-container');
+const detailsModal = document.getElementById('details-modal');
+const detailsContent = document.getElementById('details-content');
+const genreScroller = document.getElementById('genre-scroller');
+const genrePrev = document.getElementById('genre-prev');
+const genreNext = document.getElementById('genre-next');
 const playerContainer = document.getElementById('player-container');
-const videoPlayerDiv = document.getElementById('video-player');
 const playerTitle = document.getElementById('player-title');
+const videoPlayerDiv = document.getElementById('video-player');
 const backButton = document.getElementById('back-button');
 const playerSourceSelect = document.getElementById('player-source');
 const loadPlayerButton = document.getElementById('load-player-button');
-const logoContainer = document.querySelector('.logo-container'); 
-
-const moviesDropdown = document.getElementById('movies-dropdown');
-const tvDropdown = document.getElementById('tv-dropdown');
-
-// Elementos para Séries/Modal
 const seriesSelectors = document.getElementById('series-selectors');
 const seasonSelect = document.getElementById('season-select');
 const episodeSelect = document.getElementById('episode-select');
-const detailsModal = document.getElementById('details-modal');
-const detailsContent = document.getElementById('details-content');
-const closeButton = document.querySelector('.close-button'); 
+const closeButton = document.querySelector('.close-button');
 
-// Variáveis de Estado
-let currentMedia = {
-    tmdbId: null, mediaType: null, title: null, imdbId: null, 
-    seasons: [], currentSeason: 1, currentEpisode: 1 
-};
-let currentCategory = { 
-    endpoint: null, title: null, page: 1, totalPages: 1
-};
-let currentSlide = 0; 
-let movieGenres = [];
-let tvGenres = [];
-let iptvChannels = []; // Armazenará os dados combinados do IPTV-ORG
+/* Paginação (elementos que você adicionou no HTML) */
+const paginationControls = document.getElementById('pagination-controls');
+const pagePrevBtn = document.getElementById('page-prev');
+const pageNextBtn = document.getElementById('page-next');
+const pageInfoSpan = document.getElementById('page-info');
 
-// Variável para armazenar a lista de IDs de favoritos
-let favoritesList = loadFavoritesFromLocalStorage();
+/* Estado global */
+let favoritesList = [];
+let apiCache = new Map();
+let heroInterval = null;
+let currentSlide = 0;
+let currentMedia = { tmdbId: null, mediaType: null, title: null, imdbId: null, seasons: [], currentSeason: 1, currentEpisode: 1 };
 
+/* Paginação estado de categoria */
+let currentCategoryEndpoint = null;
+let currentCategoryTitle = "";
+let currentCategoryPage = 1;
+let totalCategoryPages = 1;
 
-// --- FUNÇÕES DE FAVORITOS (localStorage) ---
-
-/**
- * Carrega a lista de IDs de favoritos do localStorage.
- * @returns {Array<string>} A lista de IDs de mídia salvos.
- */
-function loadFavoritesFromLocalStorage() {
-    try {
-        const stored = localStorage.getItem('cineStreamFavorites');
-        return stored ? JSON.parse(stored) : [];
-    } catch (e) {
-        console.error("Erro ao carregar favoritos do localStorage:", e);
-        return [];
-    }
+/* ---------- UTIL ---------- */
+function debounce(fn, wait = 300) { let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), wait); }; }
+async function cachedFetch(url) {
+  if (!url) throw new Error('URL indefinida');
+  if (apiCache.has(url)) return apiCache.get(url);
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Erro ${res.status} ao buscar ${url}`);
+  const json = await res.json();
+  apiCache.set(url, json);
+  return json;
 }
-
-/**
- * Salva a lista atual de favoritos no localStorage.
- */
-function saveFavoritesToLocalStorage() {
-    try {
-        localStorage.setItem('cineStreamFavorites', JSON.stringify(favoritesList));
-    } catch (e) {
-        console.error("Erro ao salvar favoritos no localStorage:", e);
-    }
-}
-
-/**
- * Adiciona ou remove um item da lista de favoritos.
- * @param {string} tmdbId O ID do TMDB.
- * @param {string} mediaType O tipo (movie ou tv).
- */
+function loadFavoritesFromLocalStorage() { try { const s = localStorage.getItem('cineStreamFavorites'); return s ? JSON.parse(s) : []; } catch (e) { console.warn(e); return []; } }
+function saveFavoritesToLocalStorage() { try { localStorage.setItem('cineStreamFavorites', JSON.stringify(favoritesList)); } catch (e) { console.warn(e); } }
+function isFavorite(tmdbId, mediaType) { return favoritesList.includes(`${mediaType}-${tmdbId}`); }
 function toggleFavorite(tmdbId, mediaType) {
-    const id = `${mediaType}-${tmdbId}`; // Chave única
-    const index = favoritesList.indexOf(id);
-
-    if (index === -1) {
-        // Adicionar favorito
-        favoritesList.push(id);
-        alert(`O item foi adicionado aos Favoritos!`);
-    } else {
-        // Remover favorito
-        favoritesList.splice(index, 1);
-        alert(`O item foi removido dos Favoritos.`);
-    }
-
-    saveFavoritesToLocalStorage();
-    // Atualiza o visual do botão no modal, se estiver aberto
-    if (detailsModal.style.display === 'block') {
-        const modalButton = detailsContent.querySelector('.modal-favorite-button .icon-save');
-        if (modalButton) {
-            updateFavoriteButtonState(modalButton, tmdbId, mediaType);
-        }
-    }
-    // Atualiza o visual do botão no card
-    updateAllCardFavoriteIcons(tmdbId, mediaType);
-
-    // Se estiver na seção de favoritos, recarrega a lista para mostrar a remoção
-    if (currentCategory.endpoint === 'favorites') {
-        loadFavoritesCatalog();
-    }
+  const key = `${mediaType}-${tmdbId}`;
+  const idx = favoritesList.indexOf(key);
+  if (idx === -1) favoritesList.push(key); else favoritesList.splice(idx, 1);
+  saveFavoritesToLocalStorage();
+  updateAllCardFavoriteIcons(tmdbId, mediaType);
 }
-
-/**
- * Verifica se um item está nos favoritos.
- * @param {string} tmdbId 
- * @param {string} mediaType 
- * @returns {boolean}
- */
-function isFavorite(tmdbId, mediaType) {
-    const id = `${mediaType}-${tmdbId}`;
-    return favoritesList.includes(id);
-}
-
-/**
- * Atualiza o ícone do botão Favoritar.
- * @param {HTMLElement} buttonElement O elemento do ícone (o <span> com o ícone).
- * @param {string} tmdbId O ID do TMDB.
- * @param {string} mediaType O tipo (movie ou tv).
- */
-function updateFavoriteButtonState(buttonElement, tmdbId, mediaType) {
-    if (isFavorite(tmdbId, mediaType)) {
-        buttonElement.innerHTML = '&#9829;'; // Coração preenchido
-        buttonElement.classList.add('is-favorite');
-    } else {
-        buttonElement.innerHTML = '&#9825;'; // Coração vazio
-        buttonElement.classList.remove('is-favorite');
-    }
-}
-
-/**
- * Atualiza o estado de todos os ícones de favoritos para um item específico.
- */
 function updateAllCardFavoriteIcons(tmdbId, mediaType) {
-    const selector = `.movie-card[data-id="${tmdbId}"][data-type="${mediaType}"] .icon-save-button .icon-save`;
-    document.querySelectorAll(selector).forEach(buttonElement => {
-        updateFavoriteButtonState(buttonElement, tmdbId, mediaType);
-    });
+  document.querySelectorAll(`.movie-card[data-id="${tmdbId}"][data-type="${mediaType}"] .icon-save`).forEach(el => {
+    if (isFavorite(tmdbId, mediaType)) { el.innerHTML = '&#9829;'; el.classList.add('is-favorite'); }
+    else { el.innerHTML = '&#9825;'; el.classList.remove('is-favorite'); }
+  });
 }
 
-
-// --- FUNÇÕES DE HERO BANNER ---
-
+/* ---------- HERO (com fallback) ---------- */
 async function loadHeroBanner() {
+  try {
     const url = `${TMDB_BASE_URL}/trending/all/day?api_key=${TMDB_API_KEY}&language=pt-BR`;
-    
-    try {
-        const response = await fetch(url);
-        const data = await response.json();
-        
-        const trendingItems = data.results.filter(item => item.backdrop_path).slice(0, 5); 
-        
-        heroCarousel.innerHTML = ''; 
-        
-        trendingItems.forEach((item, index) => {
-            const backdropUrl = `${TMDB_IMAGE_BASE_URL}${item.backdrop_path}`;
-            const title = item.title || item.name;
-            const overview = item.overview.length > 200 ? item.overview.substring(0, 200) + '...' : item.overview;
+    const data = await cachedFetch(url);
+    const trending = (data.results || []).filter(i => i.backdrop_path).slice(0, 6);
+    if (!heroCarousel) return;
+    heroCarousel.innerHTML = '';
 
-            const slide = document.createElement('div');
-            slide.className = 'hero-slide';
-            if (index === 0) {
-                slide.classList.add('active'); 
-            }
-            
-            slide.style.backgroundImage = `url(${backdropUrl})`;
-            
-            slide.innerHTML = `
-                <div class="hero-content">
-                    <h2>${title}</h2>
-                    <p>${overview}</p>
-                    <button class="hero-watch-button" 
-                            data-id="${item.id}" 
-                            data-type="${item.media_type || 'movie'}" 
-                            data-title="${title}">
-                        ASSISTIR FILME
-                    </button>
-                </div>
-            `;
-            heroCarousel.appendChild(slide);
-        });
-
-        heroBannerContainer.style.display = 'block';
-
-        heroCarousel.querySelectorAll('.hero-watch-button').forEach(button => {
-            button.addEventListener('click', (e) => {
-                const id = e.target.dataset.id;
-                const type = e.target.dataset.type;
-                const title = e.target.dataset.title;
-                handleWatchClick(id, type, title);
-            });
-        });
-
-        if (trendingItems.length > 1) {
-            setInterval(rotateBanner, 8000); 
-        }
-
-    } catch (error) {
-        console.error('Erro ao carregar Hero Banner:', error);
-        heroBannerContainer.style.display = 'none';
+    if (!trending.length) {
+      const fallback = document.createElement('div');
+      fallback.className = 'hero-slide fallback active';
+      fallback.innerHTML = `<div class="hero-overlay"></div><div class="hero-content"><h2>CineStream</h2><p>Bem-vindo — imagem de fallback.</p></div>`;
+      heroCarousel.appendChild(fallback);
+      return;
     }
-}
 
+    trending.forEach((item, i) => {
+      const slide = document.createElement('div');
+      slide.className = 'hero-slide' + (i === 0 ? ' active' : '');
+      slide.style.backgroundImage = `url(${TMDB_IMAGE_BASE_URL}${item.backdrop_path})`;
+      slide.innerHTML = `<div class="hero-overlay"></div><div class="hero-content"><h2>${item.title || item.name}</h2><p>${(item.overview || '').substring(0, 220)}</p><button class="hero-watch-button" data-id="${item.id}" data-type="${item.media_type || 'movie'}" data-title="${item.title || item.name}">ASSISTIR</button></div>`;
+      heroCarousel.appendChild(slide);
+    });
+
+    heroCarousel.querySelectorAll('.hero-watch-button').forEach(b => b.addEventListener('click', e => {
+      const t = e.currentTarget.dataset; handleWatchClick(t.id, t.type, t.title);
+    }));
+
+    if (heroInterval) clearInterval(heroInterval);
+    if (trending.length > 1) heroInterval = setInterval(() => rotateBanner(), 7000);
+
+  } catch (err) {
+    console.warn('Hero fallback ativado: ', err);
+    if (!heroCarousel) return;
+    heroCarousel.innerHTML = '';
+    const fallback = document.createElement('div');
+    fallback.className = 'hero-slide fallback active';
+    fallback.innerHTML = `<div class="hero-overlay"></div><div class="hero-content"><h2>CineStream</h2><p>Conteúdo temporariamente indisponível.</p></div>`;
+    heroCarousel.appendChild(fallback);
+  }
+}
 function rotateBanner() {
-    const slides = heroCarousel.querySelectorAll('.hero-slide');
-    if (slides.length === 0) return;
-
-    slides[currentSlide].classList.remove('active');
-    
-    currentSlide = (currentSlide + 1) % slides.length;
-    
-    slides[currentSlide].classList.add('active');
+  if (!heroCarousel) return;
+  const slides = heroCarousel.querySelectorAll('.hero-slide');
+  if (!slides.length) return;
+  slides[currentSlide].classList.remove('active');
+  currentSlide = (currentSlide + 1) % slides.length;
+  slides[currentSlide].classList.add('active');
 }
 
-
-// --- FUNÇÕES DE GÊNEROS ---
-
+/* ---------- GÊNEROS ---------- */
 async function loadGenres() {
-    const movieUrl = `${TMDB_BASE_URL}/genre/movie/list?api_key=${TMDB_API_KEY}&language=pt-BR`;
-    const tvUrl = `${TMDB_BASE_URL}/genre/tv/list?api_key=${TMDB_API_KEY}&language=pt-BR`;
-
-    try {
-        const [movieResponse, tvResponse] = await Promise.all([fetch(movieUrl), fetch(tvUrl)]);
-        const movieData = await movieResponse.json();
-        const tvData = await tvResponse.json();
-
-        movieGenres = movieData.genres;
-        tvGenres = tvData.genres;
-
-        populateDropdowns();
-
-    } catch (error) {
-        console.error('Erro ao carregar gêneros:', error);
-    }
+  try {
+    const movieData = await cachedFetch(`${TMDB_BASE_URL}/genre/movie/list?api_key=${TMDB_API_KEY}&language=pt-BR`);
+    const genres = movieData.genres || [];
+    populateGenreBar(genres);
+  } catch (e) {
+    console.warn('Erro ao carregar gêneros', e);
+    populateGenreBar([]);
+  }
 }
 
-function populateDropdowns() {
-    
-    const movieSeparator = document.createElement('hr');
-    moviesDropdown.appendChild(movieSeparator);
-    
-    const tvSeparator = document.createElement('hr');
-    tvDropdown.appendChild(tvSeparator);
-    
-    movieGenres.forEach(genre => {
-        const li = document.createElement('li');
-        li.innerHTML = `<a href="#" data-endpoint="/discover/movie?with_genres=${genre.id}" data-title="${genre.name}">${genre.name}</a>`;
-        moviesDropdown.appendChild(li);
+function populateGenreBar(genres) {
+  if (!genreScroller) return;
+  genreScroller.innerHTML = '';
+  const btnAll = createGenreButton('Todos', 'catalog');
+  btnAll.classList.add('active');
+  genreScroller.appendChild(btnAll);
+
+  genres.forEach(g => {
+    const endpoint = `/discover/movie?with_genres=${g.id}`;
+    const b = createGenreButton(g.name, endpoint, g.id);
+    genreScroller.appendChild(b);
+  });
+
+  const arr = Array.from(genreScroller.querySelectorAll('.genre-button'));
+  arr.forEach((btn, idx) => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      arr.forEach(x => x.classList.remove('active'));
+      btn.classList.add('active');
+      smoothCenterScroll(btn);
+      const endpoint = btn.dataset.endpoint;
+      if (!endpoint || endpoint === 'catalog') loadCatalog();
+      else if (endpoint === 'favorites') loadFavoritesCatalog();
+      else loadCategory(endpoint, btn.dataset.title || btn.textContent.trim(), 1);
     });
-
-    tvGenres.forEach(genre => {
-        const li = document.createElement('li');
-        li.innerHTML = `<a href="#" data-endpoint="/discover/tv?with_genres=${genre.id}" data-title="${genre.name}">${genre.name}</a>`;
-        tvDropdown.appendChild(li);
+    btn.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight') { e.preventDefault(); (arr[idx + 1] || arr[0]).focus(); }
+      if (e.key === 'ArrowLeft') { e.preventDefault(); (arr[idx - 1] || arr[arr.length - 1]).focus(); }
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); btn.click(); }
     });
+  });
+
+  requestAnimationFrame(() => {
+    const active = genreScroller.querySelector('.genre-button.active');
+    if (active) smoothCenterScroll(active);
+  });
 }
 
-
-// --- 1. FUNÇÕES DE UTILIDADE E LISTENERS ---
-
-function attachListeners() {
-    // Mantido, mas não usado para cards de catálogo (Filmes/Séries)
+function createGenreButton(name, endpoint = 'catalog', id) {
+  const b = document.createElement('button');
+  b.className = 'genre-button';
+  b.setAttribute('role', 'tab');
+  b.textContent = name;
+  b.dataset.endpoint = endpoint;
+  b.dataset.title = name;
+  if (id) b.dataset.genreId = id;
+  return b;
 }
 
-async function getImdbId(tmdbId, mediaType) {
-    const typeEndpoint = mediaType === 'movie' ? 'movie' : 'tv';
-    const url = `${TMDB_BASE_URL}/${typeEndpoint}/${tmdbId}?api_key=${TMDB_API_KEY}`;
-    
-    try {
-        const response = await fetch(url);
-        const data = await response.json();
-        if (data.imdb_id) {
-            currentMedia.imdbId = data.imdb_id;
-        }
-
-    } catch (error) {
-        console.warn('Não foi possível obter o IMDB ID.', error);
-    }
+function smoothCenterScroll(el) {
+  if (!genreScroller || !el) return;
+  const scRect = genreScroller.getBoundingClientRect();
+  const elRect = el.getBoundingClientRect();
+  const currentScroll = genreScroller.scrollLeft;
+  const elCenter = (elRect.left - scRect.left) + elRect.width / 2;
+  const target = Math.max(0, currentScroll + elCenter - scRect.width / 2);
+  genreScroller.scrollTo({ left: target, behavior: 'smooth' });
 }
 
-/**
- * Funcao para resetar a visualizacao e limpar os containers principais.
- */
-function resetView(targetContainerId) {
-    catalogContainer.style.display = 'none';
-    resultsContainer.style.display = 'none';
-    playerContainer.style.display = 'none';
-    
-    // CORREÇÃO CRÍTICA: Garante que o Modal de Detalhes esteja sempre escondido ao resetar a view
-    detailsModal.style.display = 'none'; 
-    
-    if (targetContainerId !== 'catalog-container') {
-        catalogContainer.innerHTML = '';
-    }
-    if (targetContainerId !== 'results-container') {
-        resultsContainer.innerHTML = '';
-    }
-    
-    const target = document.getElementById(targetContainerId);
-    if (target) {
-        target.style.display = targetContainerId === 'results-container' ? 'grid' : 'block';
-    }
-    
-    // Oculta/Exibe o banner
-    if (targetContainerId === 'catalog-container' && currentCategory.endpoint !== 'live_tv') {
-        heroBannerContainer.style.display = 'block';
-    } else {
-        heroBannerContainer.style.display = 'none';
-    }
+/* ---------- DISPLAY / CARDS ---------- */
+function displayResults(results = [], container = document.getElementById('results-container'), forcedType = null) {
+  if (!container) return;
+  if (!Array.isArray(results)) results = [];
+  const mapped = results.map(it => ({ ...it, media_type: it.media_type || forcedType, title: it.title || it.name }));
+  const valid = mapped.filter(i => (i.media_type === 'movie' || i.media_type === 'tv') && (i.poster_path || i.logo) && i.id);
+  container.innerHTML = '';
+  if (!valid.length) { container.innerHTML = '<p>Nenhum resultado encontrado.</p>'; return; }
+  const frag = document.createDocumentFragment();
+  valid.forEach(item => {
+    const type = item.media_type;
+    const title = item.title;
+    const mediaId = item.id;
+    const posterUrl = item.poster_path ? `${TMDB_POSTER_BASE_URL}${item.poster_path}` : (item.logo || '');
+    const year = (item.release_date || item.first_air_date || '').substring(0, 4);
+    const imdbScore = item.vote_average ? item.vote_average.toFixed(1).replace('.', ',') : 'N/A';
+    const fav = isFavorite(mediaId, type);
+    const favIcon = fav ? '&#9829;' : '&#9825;';
+    const favClass = fav ? 'is-favorite' : '';
+    const card = document.createElement('div');
+    card.className = 'movie-card';
+    card.dataset.id = mediaId;
+    card.dataset.type = type;
+    card.dataset.title = title;
+    card.innerHTML = `
+      <img src="${posterUrl}" alt="${title}" loading="lazy">
+      <div class="card-info">
+        <h3>${title}</h3>
+        <p class="metadata-line"><span class="metadata-item">${year || ''}</span> <span class="metadata-item imdb-score">${imdbScore !== 'N/A' ? 'IMDb ' + imdbScore : ''}</span></p>
+        <div class="card-actions">
+          <button class="action-button icon-button details-button" aria-label="Detalhes">i</button>
+          <button class="action-button icon-button icon-save-button" data-id="${mediaId}" data-type="${type}"><span class="icon-save ${favClass}">${favIcon}</span></button>
+        </div>
+      </div>`;
+    frag.appendChild(card);
+  });
+  container.appendChild(frag);
 }
 
-// --- 2. FUNÇÕES DE VISUALIZAÇÃO E CATÁLOGO ---
-
-const catalogQueries = [
-    { endpoint: '/trending/movie/week', title: 'Filmes Populares da Semana', type: 'movie' },
-    { endpoint: '/tv/on_the_air', title: 'Séries Atuais', type: 'tv' },
-    { endpoint: '/movie/top_rated', title: 'Os Filmes Mais Bem Avaliados', type: 'movie' },
-];
-
-/**
- * Carrega e exibe as listas de catálogo na tela inicial (CARROSSEL).
- */
+/* ---------- CATALOG (PRINCIPAL) ---------- */
 async function loadCatalog() {
-    resetView('catalog-container'); 
-    currentCategory.endpoint = null; 
-    currentCategory.page = 1;
-    const scrollAmount = 600; // Quantidade de pixels para rolar (aproximadamente 3 cards)
+  try {
+    if (catalogContainer) catalogContainer.style.display = 'block';
+    if (resultsContainer) resultsContainer.style.display = 'none';
+    if (playerContainer) playerContainer.style.display = 'none';
+    if (paginationControls) paginationControls.style.display = 'none';
 
-    for (const query of catalogQueries) {
-        const url = `${TMDB_BASE_URL}${query.endpoint}?api_key=${TMDB_API_KEY}&language=pt-BR`;
-        
-        try {
-            const response = await fetch(url);
-            const data = await response.json();
-            
-            const section = document.createElement('section');
-            section.className = 'catalog-section';
-            
-            const rowId = `row-${query.endpoint.replace(/\//g, '-')}`;
-            // Estrutura atualizada para o posicionamento dos botões no topo
-            section.innerHTML = `
-                <div class="catalog-section-header">
-                    <h2>${query.title}</h2>
-                    <div class="carousel-nav-controls">
-                        <button class="nav-button prev-button" data-dir="-1" data-target="${rowId}">&lt;</button>
-                        <button class="nav-button next-button" data-dir="1" data-target="${rowId}">&gt;</button>
-                    </div>
-                </div>
-                <div class="carousel-container">
-                    <div class="carousel-row" id="${rowId}"></div>
-                </div>
-            `;
-            catalogContainer.appendChild(section);
+    if (!catalogContainer) return;
+    catalogContainer.innerHTML = '';
 
-            const carouselRow = section.querySelector('.carousel-row');
-            displayResults(data.results, carouselRow, query.type);
-            
-            const navButtons = section.querySelectorAll('.nav-button');
-            const row = document.getElementById(rowId);
+    const queries = [
+      { endpoint: '/movie/popular', title: 'Filmes Populares da Semana', type: 'movie' },
+      { endpoint: '/tv/on_the_air', title: 'Séries Atuais', type: 'tv' },
+      { endpoint: '/movie/top_rated', title: 'Os Filmes Mais Bem Avaliados', type: 'movie' }
+    ];
 
-            navButtons.forEach(button => {
-                const direction = parseInt(button.getAttribute('data-dir'));
-                
-                button.addEventListener('click', () => {
-                    row.scrollBy({ left: direction * scrollAmount, behavior: 'smooth' });
-                });
-            });
-            
-            // --- Lógica de Mostrar/Esconder Botões de Navegação (UX) ---
-            const updateVisibility = () => {
-                const maxScroll = row.scrollWidth - row.clientWidth;
-                
-                if (row.scrollWidth > row.clientWidth) {
-                    
-                    // Mostra o botão 'Próximo' se não estiver no final
-                    section.querySelector('.nav-button.next-button').style.display = (row.scrollLeft >= maxScroll - 5) ? 'none' : 'flex';
-                    // Mostra o botão 'Anterior' se não estiver no início
-                    section.querySelector('.nav-button.prev-button').style.display = (row.scrollLeft <= 5) ? 'none' : 'flex';
-
-                } else {
-                    // Se não há scroll, esconde ambos
-                    navButtons.forEach(b => b.style.display = 'none');
-                }
-            };
-
-            // Verifica a visibilidade no carregamento e ao rolar
-            row.addEventListener('scroll', updateVisibility);
-            // Pequeno atraso para garantir que as imagens carreguem e o scrollWidth seja correto
-            setTimeout(updateVisibility, 500); 
-
-        } catch (error) {
-            console.error(`Erro ao carregar catálogo ${query.title}:`, error);
-        }
-    }
-}
-
-/**
- * Renderiza os botões de paginação na tela de categoria.
- */
-function renderPagination(totalPages, currentPage, endpoint, title) {
-    const paginationContainer = document.createElement('div');
-    paginationContainer.className = 'pagination-controls';
-
-    const maxButtons = 5;
-    let startPage = Math.max(1, currentPage - Math.floor(maxButtons / 2));
-    let endPage = Math.min(totalPages, startPage + maxButtons - 1);
-    
-    if (endPage - startPage < maxButtons - 1) {
-        startPage = Math.max(1, endPage - maxButtons + 1);
-    }
-    
-    if (currentPage > 1) {
-        paginationContainer.innerHTML += `<button data-page="${currentPage - 1}">Anterior</button>`;
-    }
-    
-    for (let i = startPage; i <= endPage; i++) {
-        paginationContainer.innerHTML += `<button data-page="${i}" class="${i === currentPage ? 'active' : ''}">${i}</button>`;
-    }
-
-    if (currentPage < totalPages) {
-        paginationContainer.innerHTML += `<button data-page="${currentPage + 1}">Próxima</button>`;
-    }
-
-    const resultsSection = resultsContainer.querySelector('.catalog-section');
-    if (resultsSection) {
-        resultsSection.appendChild(paginationContainer);
-        
-        paginationContainer.querySelectorAll('button').forEach(button => {
-            button.addEventListener('click', (e) => {
-                const newPage = parseInt(e.target.dataset.page);
-                loadCategory(endpoint, title, newPage);
-                window.scrollTo(0, 0); 
-            });
+    for (const q of queries) {
+      const section = document.createElement('section');
+      section.className = 'catalog-section';
+      const rowId = `row-${q.endpoint.replace(/\W/g, '-')}`;
+      section.innerHTML = `<div class="catalog-section-header"><h2>${q.title}</h2><div class="carousel-nav-controls"><button class="nav-button prev-button" data-target="${rowId}">&lt;</button><button class="nav-button next-button" data-target="${rowId}">&gt;</button></div></div><div class="carousel-container"><div class="carousel-row" id="${rowId}"></div></div>`;
+      catalogContainer.appendChild(section);
+      const row = section.querySelector('.carousel-row');
+      try {
+        const url = `${TMDB_BASE_URL}${q.endpoint}?api_key=${TMDB_API_KEY}&language=pt-BR&page=1`;
+        const data = await cachedFetch(url);
+        const items = data.results || [];
+        items.forEach(item => {
+          const type = q.type || item.media_type || 'movie';
+          const title = item.title || item.name || '';
+          const poster = item.poster_path ? `${TMDB_POSTER_BASE_URL}${item.poster_path}` : '';
+          const card = document.createElement('div');
+          card.className = 'movie-card';
+          card.dataset.id = item.id;
+          card.dataset.type = type;
+          card.dataset.title = title;
+          card.innerHTML = `<img src="${poster}" alt="${title}" loading="lazy"><div class="card-info"><h3>${title}</h3><p class="metadata-line"><span class="metadata-item">${(item.release_date || item.first_air_date || '').substring(0, 4)}</span> <span class="metadata-item imdb-score">${item.vote_average ? item.vote_average.toFixed(1) : ''}</span></p><div class="card-actions"><button class="action-button icon-button details-button">i</button><button class="action-button icon-button icon-save-button" data-id="${item.id}" data-type="${type}"><span class="icon-save">${isFavorite(item.id, type) ? '&#9829;' : '&#9825;'}</span></button></div></div>`;
+          row.appendChild(card);
         });
+
+        const prevBtn = section.querySelector('.prev-button');
+        const nextBtn = section.querySelector('.next-button');
+        const scrollAmount = 500;
+        prevBtn?.addEventListener('click', () => row.scrollBy({ left: -scrollAmount, behavior: 'smooth' }));
+        nextBtn?.addEventListener('click', () => row.scrollBy({ left: scrollAmount, behavior: 'smooth' }));
+        updateCarouselNavVisibility(row, prevBtn, nextBtn);
+
+      } catch (errRow) {
+        console.error('Erro carregar seção', q.title, errRow);
+        if (row) row.innerHTML = `<p>Erro ao carregar seção.</p>`;
+      }
     }
+
+  } catch (err) {
+    console.error('Erro loadCatalog', err);
+    if (catalogContainer) catalogContainer.innerHTML = `<p>Erro ao carregar catálogo: ${err.message}</p>`;
+  }
+}
+function updateCarouselNavVisibility(row, prevBtn, nextBtn) {
+  if (!row || !prevBtn || !nextBtn) return;
+  function check() {
+    const maxScroll = row.scrollWidth - row.clientWidth;
+    if (maxScroll <= 10) { prevBtn.style.display = 'none'; nextBtn.style.display = 'none'; }
+    else {
+      prevBtn.style.display = row.scrollLeft <= 5 ? 'none' : 'flex';
+      nextBtn.style.display = row.scrollLeft >= maxScroll - 5 ? 'none' : 'flex';
+    }
+  }
+  check();
+  row.addEventListener('scroll', check);
+  window.addEventListener('resize', check);
 }
 
+/* ---------- CATEGORY (com paginação) ---------- */
+async function loadCategory(endpoint, title = "Categoria", page = 1) {
+  try {
+    resetToResultsView();
 
-/**
- * Carrega filmes/séries baseados em um endpoint de categoria (VER TODOS / GRADE).
- */
-async function loadCategory(endpoint, title, page = 1) {
-    // Rota de TV ao Vivo
-    if (endpoint === 'live_tv') {
-        loadLiveTV();
-        return;
-    }
+    // Atualiza estado de paginação
+    currentCategoryEndpoint = endpoint;
+    currentCategoryTitle = title;
+    currentCategoryPage = page;
 
-    // Rota de Favoritos
-    if (endpoint === 'favorites') {
-        loadFavoritesCatalog();
-        return;
-    }
-
-
-    resetView('results-container');
-    resultsContainer.innerHTML = `<p>Carregando ${title}... (Página ${page})</p>`;
-
-    currentCategory.endpoint = endpoint;
-    currentCategory.title = title;
-    currentCategory.page = page;
+    if (!endpoint) return loadCatalog();
 
     const finalEndpoint = endpoint.includes('?') ? `${endpoint}&page=${page}` : `${endpoint}?page=${page}`;
     const url = `${TMDB_BASE_URL}${finalEndpoint}&api_key=${TMDB_API_KEY}&language=pt-BR`;
-    
+    const data = await cachedFetch(url);
+
+    totalCategoryPages = data.total_pages || 1;
     const primaryType = endpoint.includes('/movie/') || endpoint.includes('discover/movie') ? 'movie' : 'tv';
 
-    try {
-        const response = await fetch(url);
-        const data = await response.json();
-        
-        if (!data.results || data.results.length === 0) {
-            resultsContainer.innerHTML = `<p>Nenhum resultado encontrado na página ${page}.</p>`;
-            return;
-        }
+    if (!resultsContainer) return;
+    resultsContainer.innerHTML = `
+      <section class="catalog-section">
+        <h2>${title} (Página ${page})</h2>
+        <div id="category-results" class="results-grid"></div>
+      </section>
+    `;
 
-        currentCategory.totalPages = Math.min(500, data.total_pages);
-        
-        resultsContainer.innerHTML = `<section class="catalog-section"><h2>${title} (Página ${page} de ${currentCategory.totalPages})</h2><div id="category-results" class="results-grid"></div></section>`;
-        const categoryResultsContainer = document.getElementById('category-results');
+    displayResults(data.results || [], document.getElementById('category-results'), primaryType);
 
-        displayResults(data.results, categoryResultsContainer, primaryType);
-        
-        renderPagination(currentCategory.totalPages, currentCategory.page, endpoint, title);
+    updatePaginationUI();
 
-    } catch (error) {
-        console.error(`Erro ao carregar categoria ${title}:`, error);
-        resultsContainer.innerHTML = `<p>Erro ao carregar categoria: ${error.message}</p>`;
-    }
+  } catch (err) {
+    console.error('Erro loadCategory', err);
+    if (resultsContainer) resultsContainer.innerHTML = `<p>Erro ao carregar categoria.</p>`;
+  }
 }
 
-
-/**
- * Exibe os resultados na tela (MODIFICADA PARA CLIQUE NO CARD).
- */
-function displayResults(results, container = resultsContainer, forcedType = null) {
-    
-    const mappedResults = results.map(item => ({
-        ...item,
-        media_type: item.media_type || forcedType,
-        title: item.title || item.name
-    }));
-
-    const validResults = mappedResults.filter(item => 
-        (item.media_type === 'movie' || item.media_type === 'tv') && 
-        item.poster_path && 
-        item.id
-    );
-
-    if (validResults.length === 0 && container === resultsContainer) {
-        container.innerHTML = '<p>Nenhum resultado encontrado.</p>';
-        return;
-    }
-
-    container.innerHTML = '';
-    
-    // Renderiza os cards
-    validResults.forEach(item => {
-        const type = item.media_type;
-        const title = item.title; 
-        const mediaId = item.id;
-        const posterUrl = `${TMDB_POSTER_BASE_URL}${item.poster_path}`;
-        
-        // --- Simulação dos Metadados para o Card (Ano e Nota) ---
-        const year = (item.release_date || item.first_air_date || '').substring(0, 4);
-        const imdbScore = item.vote_average ? item.vote_average.toFixed(1).replace('.', ',') : 'N/A';
-        
-        // Adicionado: Define o ícone inicial com base no estado de favorito
-        const isFav = isFavorite(mediaId, type);
-        const favIcon = isFav ? '&#9829;' : '&#9825;'; // Coração preenchido ou vazio
-        const favClass = isFav ? 'is-favorite' : '';
-
-        const card = document.createElement('div');
-        card.className = 'movie-card';
-        
-        // Renderiza a imagem e os metadados estáticos
-        card.innerHTML = `
-            <img src="${posterUrl}" alt="${title}">
-            <div class="card-info">
-                <h3>${title}</h3>
-                <p class="metadata-line">
-                    <span class="metadata-item">${year}</span>
-                    <span class="metadata-item imdb-score">IMDb ${imdbScore}</span>
-                </p>
-                <div class="card-actions">
-                    <button class="action-button icon-button details-button">i</button>
-                    <button class="action-button icon-button icon-save-button" 
-                            data-id="${mediaId}" data-type="${type}">
-                        <span class="icon-save ${favClass}">${favIcon}</span>
-                    </button>
-                </div>
-            </div>
-        `;
-        
-        // 1. Adiciona os dados ao card
-        card.setAttribute('data-id', mediaId);
-        card.setAttribute('data-type', type);
-        card.setAttribute('data-title', title);
-        
-        // 2. Evento CRÍTICO: Clique no card inteiro para ir para o player
-        card.addEventListener('click', function(e) {
-            // Verifica se o clique foi em um botão de detalhes para abrir o modal em vez do player
-            if (e.target.closest('.details-button') || e.target.closest('.icon-save-button')) {
-                 e.stopPropagation();
-                 const id = this.getAttribute('data-id');
-                 const type = this.getAttribute('data-type');
-                 showDetailsModal(id, type);
-                 return;
-            }
-
-            // Se for um Card de Filme/Série (clique na imagem ou área vazia), vai direto para o player
-            const id = this.getAttribute('data-id');
-            const type = this.getAttribute('data-type');
-            const mediaTitle = this.getAttribute('data-title');
-            
-            handleWatchClick(id, type, mediaTitle);
-        });
-        
-        // 3. Adiciona listeners para os botões de ícone
-        card.querySelector('.details-button').addEventListener('click', function(e) {
-            e.stopPropagation(); // Requisitado para evitar o clique no card
-            showDetailsModal(mediaId, type);
-        });
-        
-        card.querySelector('.icon-save-button').addEventListener('click', function(e) {
-            e.stopPropagation(); // Requisitado para evitar o clique no card
-            const id = this.getAttribute('data-id');
-            const type = this.getAttribute('data-type');
-            toggleFavorite(id, type); // Chama a função de toggle
-        });
-
-
-        container.appendChild(card);
-    });
-    
-    attachChannelListeners();
+/* Atualiza a UI de paginação (mostra controles e texto) */
+function updatePaginationUI() {
+  if (!paginationControls || !pageInfoSpan) return;
+  paginationControls.style.display = 'flex';
+  pageInfoSpan.textContent = `Página ${currentCategoryPage} de ${totalCategoryPages}`;
+  // desabilita botões conforme limites
+  if (pagePrevBtn) pagePrevBtn.disabled = currentCategoryPage <= 1;
+  if (pageNextBtn) pageNextBtn.disabled = currentCategoryPage >= totalCategoryPages;
 }
 
-/**
- * Carrega e exibe a lista de favoritos.
- */
+/* ---------- FAVORITOS ---------- */
 async function loadFavoritesCatalog() {
-    resetView('results-container');
-    resultsContainer.innerHTML = '<h2>Favoritos</h2><p>Carregando seus filmes e séries favoritos...</p>';
-    currentCategory.endpoint = 'favorites';
-    currentCategory.title = 'Favoritos';
-
-    const favoriteItems = loadFavoritesFromLocalStorage();
-
-    if (favoriteItems.length === 0) {
-        resultsContainer.innerHTML = `
-            <section class="catalog-section">
-                <h2>Seus Favoritos</h2>
-                <p class="empty-list-message">
-                    Você ainda não adicionou nenhum filme ou série aos seus favoritos.
-                    Adicione um item clicando no ícone <span style="color: #e50914;">&#9825;</span> no card!
-                </p>
-            </section>
-        `;
-        return;
-    }
-
-    // 1. Coleta IDs de filmes e séries
-    const tmdbIdsToFetch = favoriteItems.map(item => {
-        const [type, id] = item.split('-');
-        return { type: type, id: id };
+  try {
+    resetToResultsView();
+    if (!resultsContainer) return;
+    resultsContainer.innerHTML = '<section class="catalog-section"><h2>Favoritos</h2><div id="favorites-grid" class="results-grid">Carregando...</div></section>';
+    const favItems = favoritesList.slice();
+    if (!favItems.length) { document.getElementById('favorites-grid').innerHTML = '<p>Você ainda não adicionou favoritos.</p>'; return; }
+    const promises = favItems.map(it => {
+      const [type, id] = it.split('-');
+      return fetch(`${TMDB_BASE_URL}/${type}/${id}?api_key=${TMDB_API_KEY}&language=pt-BR`).then(r => r.ok ? r.json() : null).catch(() => null);
     });
-
-    // 2. Cria as promessas de busca no TMDB
-    const fetchPromises = tmdbIdsToFetch.map(({ id, type }) => {
-        const url = `${TMDB_BASE_URL}/${type}/${id}?api_key=${TMDB_API_KEY}&language=pt-BR`;
-        return fetch(url)
-            .then(res => res.json())
-            .catch(err => {
-                console.error(`Erro ao buscar ${type} ID ${id}:`, err);
-                return null;
-            });
-    });
-
-    const rawResults = await Promise.all(fetchPromises);
-    
-    // 3. Filtra resultados válidos e renderiza
-    const validResults = rawResults.filter(item => item && item.id);
-    
-    resultsContainer.innerHTML = `<section class="catalog-section">
-        <h2>Seus Favoritos (${validResults.length} itens)</h2>
-        <div id="favorites-grid" class="results-grid"></div>
-    </section>`;
-    
-    const favoritesGridContainer = document.getElementById('favorites-grid');
-
-    // Mapeia os resultados para o formato esperado pelo displayResults
-    const normalizedResults = validResults.map(item => ({
-        ...item,
-        media_type: item.title ? 'movie' : 'tv', // Tenta inferir o tipo
-    }));
-    
-    // Passa a lista normalizada para a função que renderiza os cards
-    displayResults(normalizedResults, favoritesGridContainer);
+    const raw = await Promise.all(promises);
+    const valid = raw.filter(x => x && x.id);
+    const grid = document.getElementById('favorites-grid');
+    grid.innerHTML = '';
+    displayResults(valid.map(item => ({ ...item, media_type: item.title ? 'movie' : 'tv' })), grid);
+    if (paginationControls) paginationControls.style.display = 'none';
+  } catch (err) {
+    console.error('Erro loadFavoritesCatalog', err);
+    if (resultsContainer) resultsContainer.innerHTML = `<p>Erro ao carregar favoritos.</p>`;
+  }
 }
 
-
-/**
- * Função de busca manual (quando o usuário digita na busca).
- */
-async function searchMedia(query) {
-    if (!query) return; 
-
-    resetView('results-container');
-    resultsContainer.innerHTML = `<p>Buscando resultados para "${query}"...</p>`;
-    currentCategory.endpoint = null; 
-
-    const url = `${TMDB_BASE_URL}/search/multi?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(query)}&language=pt-BR`;
-
-    try {
-        const response = await fetch(url);
-        if (!response.ok) {
-            throw new Error('Erro ao buscar dados do TMDB. Verifique a chave da API.');
-        }
-        const data = await response.json();
-        
-        resultsContainer.innerHTML = `<section class="catalog-section"><h2>Resultados da Busca</h2><div id="search-results" class="results-grid"></div></section>`;
-        const searchResultsContainer = document.getElementById('search-results');
-
-        displayResults(data.results, searchResultsContainer);
-
-    } catch (error) {
-        console.error('Erro na busca:', error);
-        resultsContainer.innerHTML = `<p>Erro: ${error.message}</p>`;
-    }
+/* ---------- LIVE TV (IPTV) ---------- */
+async function fetchAndCombineIPTVData() {
+  try {
+    const [channels, streams, logos] = await Promise.all([
+      cachedFetch(`${IPTV_ORG_API_BASE}/channels.json`),
+      cachedFetch(`${IPTV_ORG_API_BASE}/streams.json`),
+      cachedFetch(`${IPTV_ORG_API_BASE}/logos.json`)
+    ]);
+    const channelMap = new Map((channels || []).map(c => [c.id, c]));
+    const logoMap = new Map(); (logos || []).forEach(l => { if (l.channel && !logoMap.has(l.channel)) logoMap.set(l.channel, l.url); });
+    const combined = (streams || []).filter(s => s.url && s.url.endsWith('.m3u8')).map(s => {
+      const ch = channelMap.get(s.channel); if (!ch) return null;
+      return { id: s.channel, name: ch.name, category: (ch.categories || []).join(', ') || 'Geral', streamUrl: s.url, logoUrl: logoMap.get(ch.id) || '' };
+    }).filter(Boolean).filter((v, i, self) => i === self.findIndex(t => t.id === v.id));
+    return combined;
+  } catch (e) { console.warn('Erro IPTV', e); return []; }
 }
 
+let iptvChannels = [];
+async function loadLiveTV() {
+  try {
+    resetToResultsView();
+    if (!resultsContainer) return;
+    resultsContainer.innerHTML = '<section class="catalog-section"><h2>TV ao Vivo</h2><div id="channels-grid" class="results-grid">Buscando canais...</div></section>';
+    if (!iptvChannels.length) iptvChannels = await fetchAndCombineIPTVData();
+    if (!iptvChannels.length) { resultsContainer.innerHTML = '<p>Erro: não foi possível carregar canais.</p>'; return; }
+    const grid = document.getElementById('channels-grid'); grid.innerHTML = '';
+    iptvChannels.forEach(ch => {
+      const card = document.createElement('div'); card.className = 'movie-card channel-card';
+      card.innerHTML = `<img src="${ch.logoUrl || 'https://via.placeholder.com/200x200?text=Logo'}" alt="${ch.name}" loading="lazy"><div class="card-info"><h3>${ch.name}</h3><p style="color:#ccc">${ch.category}</p><button class="watch-channel-button action-button primary-button" data-stream="${ch.streamUrl}">ASSISTIR AO VIVO</button></div>`;
+      grid.appendChild(card);
+    });
+    document.querySelectorAll('.watch-channel-button').forEach(btn => btn.addEventListener('click', (e) => { const url = e.currentTarget.dataset.stream; playLiveStream(url); }));
+    if (paginationControls) paginationControls.style.display = 'none';
+  } catch (err) { console.error('Erro loadLiveTV', err); if (resultsContainer) resultsContainer.innerHTML = '<p>Erro ao carregar TV Ao Vivo.</p>'; }
+}
 
-// --- 3. FUNÇÕES DE PLAYER E MODAL ---
+function playLiveStream(url) {
+  try {
+    resetToPlayerView('Ao Vivo');
+    if (!videoPlayerDiv) return;
+    videoPlayerDiv.innerHTML = '';
+    const video = document.createElement('video'); video.controls = true; video.autoplay = true; video.style.width = '100%'; video.style.height = '100%';
+    videoPlayerDiv.appendChild(video);
+    if (typeof Hls !== 'undefined' && Hls.isSupported()) { const hls = new Hls(); hls.loadSource(url); hls.attachMedia(video); }
+    else if (video.canPlayType('application/vnd.apple.mpegurl')) { video.src = url; }
+    else videoPlayerDiv.innerHTML = '<p>Seu navegador não suporta M3U8.</p>';
+  } catch (e) { console.error('playLiveStream error', e); }
+}
 
+/* ---------- DETAILS MODAL ---------- */
+async function showDetailsModal(tmdbId, mediaType) {
+  try {
+    if (!detailsModal || !detailsContent) return;
+    detailsContent.innerHTML = '<p>Carregando detalhes...</p>';
+    detailsModal.classList.add('open');
+    detailsModal.setAttribute('aria-hidden', 'false');
+    const type = mediaType === 'movie' ? 'movie' : 'tv';
+    const data = await cachedFetch(`${TMDB_BASE_URL}/${type}/${tmdbId}?api_key=${TMDB_API_KEY}&language=pt-BR`);
+    const title = data.title || data.name || '';
+    const posterUrl = data.poster_path ? `${TMDB_POSTER_BASE_URL}${data.poster_path}` : '';
+    const year = (data.release_date || data.first_air_date || '').substring(0, 4);
+    const overview = data.overview || 'Sinopse não disponível.';
+    const fav = isFavorite(tmdbId, mediaType);
+    detailsContent.innerHTML = `<div style="display:flex;gap:20px;align-items:flex-start"><img src="${posterUrl}" alt="${title}" style="width:180px;border-radius:8px;object-fit:cover"><div><h3>${title}</h3><p style="color:#bdbdbd">${year}</p><p style="color:#e5e5e5;max-width:600px">${overview}</p><div style="margin-top:12px;display:flex;gap:12px"><button class="action-button primary-button watch-button" data-id="${tmdbId}" data-type="${mediaType}" data-title="${title}">▶︎ Assistir</button><button class="action-button icon-button modal-favorite-button" data-id="${tmdbId}" data-type="${mediaType}"><span class="icon-save ${fav ? 'is-favorite' : ''}">${fav ? '&#9829;' : '&#9825;'}</span></button></div></div></div>`;
+    detailsContent.querySelector('.watch-button')?.addEventListener('click', (e) => { const d = e.currentTarget.dataset; closeDetailsModal(); handleWatchClick(d.id, d.type, d.title); });
+    detailsContent.querySelector('.modal-favorite-button')?.addEventListener('click', (e) => { const d = e.currentTarget.dataset; toggleFavorite(d.id, d.type); });
+  } catch (err) { console.error('Erro showDetailsModal', err); if (detailsContent) detailsContent.innerHTML = '<p>Erro ao carregar detalhes.</p>'; }
+}
+function closeDetailsModal() { if (detailsModal) { detailsModal.classList.remove('open'); detailsModal.setAttribute('aria-hidden', 'true'); } }
+
+/* ---------- PLAYER ---------- */
+async function getImdbId(tmdbId, mediaType) {
+  try { const type = mediaType === 'movie' ? 'movie' : 'tv'; const data = await cachedFetch(`${TMDB_BASE_URL}/${type}/${tmdbId}?api_key=${TMDB_API_KEY}`); return data.imdb_id || null; } catch (e) { return null; }
+}
 async function loadSeriesOptions(tmdbId) {
-    const url = `${TMDB_BASE_URL}/tv/${tmdbId}?api_key=${TMDB_API_KEY}&language=pt-BR`;
-    
-    try {
-        const response = await fetch(url);
-        const data = await response.json();
-
-        const validSeasons = data.seasons.filter(s => s.season_number > 0 && s.episode_count > 0);
-        
-        currentMedia.seasons = validSeasons;
-        
-        seasonSelect.innerHTML = '';
-        validSeasons.forEach(season => {
-            const option = document.createElement('option');
-            option.value = season.season_number;
-            option.textContent = `T${season.season_number}`;
-            seasonSelect.appendChild(option);
-        });
-
-        currentMedia.currentSeason = validSeasons.length > 0 ? validSeasons[0].season_number : 1;
-        updateEpisodeOptions(currentMedia.currentSeason);
-
-    } catch (error) {
-        console.error('Erro ao carregar opções de séries:', error);
-        seriesSelectors.innerHTML = `<p>Erro: Falha ao carregar temporadas.</p>`;
+  try {
+    const data = await cachedFetch(`${TMDB_BASE_URL}/tv/${tmdbId}?api_key=${TMDB_API_KEY}&language=pt-BR`);
+    const seasons = (data.seasons || []).filter(s => s.season_number > 0 && s.episode_count > 0);
+    currentMedia.seasons = seasons;
+    if (seasonSelect) {
+      seasonSelect.innerHTML = '';
+      seasons.forEach(s => { const o = document.createElement('option'); o.value = s.season_number; o.textContent = `T${s.season_number}`; seasonSelect.appendChild(o); });
+      updateEpisodeOptions(seasons.length ? seasons[0].season_number : 1);
     }
+  } catch (e) { console.warn('Erro temporadas', e); }
 }
-
 function updateEpisodeOptions(seasonNumber) {
-    const season = currentMedia.seasons.find(s => s.season_number == seasonNumber);
-    episodeSelect.innerHTML = ''; 
-    if (season && season.episode_count > 0) {
-        for (let i = 1; i <= season.episode_count; i++) {
-            const option = document.createElement('option');
-            option.value = i;
-            option.textContent = `E${i}`;
-            episodeSelect.appendChild(option);
-        }
-        currentMedia.currentEpisode = 1; 
-    } else {
-        currentMedia.currentEpisode = null;
-    }
+  const season = currentMedia.seasons.find(s => s.season_number == seasonNumber);
+  if (!episodeSelect) return;
+  episodeSelect.innerHTML = '';
+  if (season && season.episode_count > 0) { for (let i = 1; i <= season.episode_count; i++) { const o = document.createElement('option'); o.value = i; o.textContent = `E${i}`; episodeSelect.appendChild(o); } currentMedia.currentEpisode = 1; } else currentMedia.currentEpisode = null;
 }
 
 async function handleWatchClick(tmdbId, mediaType, mediaTitle) {
-    const mediaId = parseInt(tmdbId);
-    if (isNaN(mediaId)) {
-        console.error("ID de mídia inválido recebido:", tmdbId);
-        return; 
-    }
-
-    Object.assign(currentMedia, {
-        tmdbId: mediaId, mediaType, title: mediaTitle, imdbId: null, seasons: [], currentSeason: 1, currentEpisode: 1
-    });
-
-    resetView('player-container'); 
-    playerTitle.textContent = mediaTitle;
-    
-    const playerOptionsDiv = playerContainer.querySelector('.player-options');
-    if(playerOptionsDiv) {
-        playerOptionsDiv.style.display = 'flex'; 
-    }
-    
-    seriesSelectors.style.display = 'none'; 
-
-    await getImdbId(mediaId, mediaType);
-    
-    if (mediaType === 'tv') {
-        seriesSelectors.style.display = 'block';
-        await loadSeriesOptions(mediaId);
-    }
-    
-    createPlayer(); 
+  try {
+    currentMedia.tmdbId = parseInt(tmdbId);
+    currentMedia.mediaType = mediaType;
+    currentMedia.title = mediaTitle;
+    resetToPlayerView(mediaTitle);
+    if (mediaType === 'tv') { if (seriesSelectors) seriesSelectors.style.display = 'flex'; await loadSeriesOptions(tmdbId); } else if (seriesSelectors) seriesSelectors.style.display = 'none';
+    createPlayer();
+  } catch (e) { console.error('Erro handleWatchClick', e); }
 }
 
 function createPlayer() {
-    const source = playerSourceSelect.value;
-    const { tmdbId, mediaType, imdbId, currentSeason, currentEpisode } = currentMedia;
-
-    videoPlayerDiv.innerHTML = ''; 
+  try {
+    const source = playerSourceSelect?.value || 'megaembed.com';
+    const { tmdbId, mediaType, currentSeason, currentEpisode } = currentMedia;
+    if (!videoPlayerDiv) return;
+    videoPlayerDiv.innerHTML = '';
     let embedUrl = '';
-    const typeParam = mediaType === 'movie' ? 'movie' : 'tv';
-    
-    if (source === 'megaembed.com') {
-        if (mediaType === 'movie') {
-            embedUrl = `https://megaembed.com/embed/${tmdbId}`;
-        } else {
-            embedUrl = `https://megaembed.com/embed/${tmdbId}/${currentSeason}/${currentEpisode}`;
-        }
-    } else if (source === 'vidsrc-embed.ru') {
-        const langParam = '&ds_lang=pt'; 
-        if (mediaType === 'movie') {
-            embedUrl = `https://vidsrc-embed.ru/embed/${typeParam}?tmdb=${tmdbId}${langParam}`;
-        } else {
-            embedUrl = `https://vidsrc-embed.ru/embed/${typeParam}?tmdb=${tmdbId}&season=${currentSeason}&episode=${currentEpisode}${langParam}`;
-        }
-    } else if (source === '2embed.top') {
-        if (mediaType === 'movie') {
-            embedUrl = `https://2embed.top/embed/movie/${tmdbId}`;
-        } else {
-            embedUrl = `https://2embed.top/embed/tv/${tmdbId}/${currentSeason}/${currentEpisode}`;
-        }
-    } else if (source === 'vidsrc.cc') {
-        const version = 'v2';
-        if (mediaType === 'movie') {
-            embedUrl = `https://vidsrc.cc/${version}/embed/movie/${tmdbId}`;
-        } else {
-            embedUrl = `https://vidsrc.cc/${version}/embed/tv/${tmdbId}/${currentSeason}/${currentEpisode}`;
-        }
-    } else if (source === 'playerflixapi.com') {
-        if (mediaType === 'movie') {
-            if (!imdbId) {
-                videoPlayerDiv.innerHTML = `<p>A fonte **playerflixapi.com** exige o ID do IMDB para filmes. Tente outra fonte.</p>`;
-                return;
-            }
-            embedUrl = `https://playerflixapi.com/filme/${imdbId}`;
-        } else {
-            embedUrl = `https://playerflixapi.com/serie/${tmdbId}/${currentSeason}/${currentEpisode}`;
-        }
-    } else if (source === 'vidsrc.to') {
-        if (!imdbId) {
-            videoPlayerDiv.innerHTML = `<p>A fonte **vidsrc.to** exige o ID do IMDB para filmes. Tente outra fonte.</p>`;
-            return;
-        }
-        if (mediaType === 'movie') {
-            embedUrl = `https://vidsrc.to/embed/movie/${imdbId}`;
-        } else {
-             videoPlayerDiv.innerHTML = `<p>A fonte **vidsrc.to** não suporta seleção direta de episódio. Tente outra opção.</p>`;
-             return;
-        }
-    } else {
-        videoPlayerDiv.innerHTML = `<p>Fonte de player desconhecida.</p>`;
-        return;
-    }
-
+    if (source === 'megaembed.com') embedUrl = mediaType === 'movie' ? `https://megaembed.com/embed/${tmdbId}` : `https://megaembed.com/embed/${tmdbId}/${currentSeason || 1}/${currentEpisode || 1}`;
+    else if (source === '2embed.top') embedUrl = mediaType === 'movie' ? `https://2embed.top/embed/movie/${tmdbId}` : `https://2embed.top/embed/tv/${tmdbId}/${currentSeason || 1}/${currentEpisode || 1}`;
+    else if (source === 'vidsrc-embed.ru') { const lang = '&ds_lang=pt'; embedUrl = mediaType === 'movie' ? `https://vidsrc-embed.ru/embed/movie?tmdb=${tmdbId}${lang}` : `https://vidsrc-embed.ru/embed/tv?tmdb=${tmdbId}&season=${currentSeason || 1}&episode=${currentEpisode || 1}${lang}`; }
+    else { videoPlayerDiv.innerHTML = '<p>Fonte desconhecida</p>'; return; }
     const iframe = document.createElement('iframe');
     iframe.src = embedUrl;
-    iframe.allowFullscreen = true; 
-    iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture';
+    iframe.allowFullscreen = true;
     iframe.style.width = '100%';
     iframe.style.height = '100%';
-    
     videoPlayerDiv.appendChild(iframe);
+  } catch (e) { console.error('Erro createPlayer', e); if (videoPlayerDiv) videoPlayerDiv.innerHTML = '<p>Erro ao carregar player</p>'; }
 }
 
-async function showDetailsModal(tmdbId, mediaType) {
-    const typeEndpoint = mediaType === 'movie' ? 'movie' : 'tv';
-    // Buscamos o backdrop_path no mesmo endpoint
-    const url = `${TMDB_BASE_URL}/${typeEndpoint}/${tmdbId}?api_key=${TMDB_API_KEY}&language=pt-BR`;
-    
-    detailsContent.innerHTML = '<p>Carregando detalhes...</p>';
-    detailsModal.style.display = 'block';
-
-    try {
-        const response = await fetch(url);
-        const data = await response.json();
-
-        const title = data.title || data.name;
-        const sinopse = data.overview || 'Sinopse não disponível em Português.';
-        const posterPath = data.poster_path;
-        const backdropPath = data.backdrop_path; // Novo: Captura o backdrop
-        
-        const posterUrl = posterPath ? `${TMDB_POSTER_BASE_URL}${posterPath}` : '';
-        const backdropUrl = backdropPath ? `${TMDB_IMAGE_BASE_URL}${backdropPath}` : '';
-        
-        const year = (data.release_date || data.first_air_date || '').substring(0, 4);
-        const seasonsCount = data.number_of_seasons ? `${data.number_of_seasons} Temporada${data.number_of_seasons > 1 ? 's' : ''}` : null;
-        const runtime = data.runtime ? `${data.runtime} min` : null;
-        
-        const imdbScore = data.vote_average ? data.vote_average.toFixed(1) : 'N/A';
-        const displayType = mediaType === 'movie' ? 'Filme' : 'Série';
-        
-        // Favoritos
-        const isFav = isFavorite(tmdbId, mediaType);
-        const favIcon = isFav ? '&#9829;' : '&#9825;';
-        const favClass = isFav ? 'is-favorite' : '';
-
-        // Atualiza o fundo do modal para o efeito backdrop
-        const modalContent = detailsModal.querySelector('.modal-content');
-        if (backdropUrl) {
-            modalContent.style.backgroundImage = `url(${backdropUrl})`;
-            modalContent.classList.add('has-backdrop');
-        } else {
-            modalContent.style.backgroundImage = 'none';
-            modalContent.classList.remove('has-backdrop');
-        }
-
-        // Metadados formatados
-        const metadataHtml = [];
-        if (seasonsCount) metadataHtml.push(`<span class="metadata-item">${seasonsCount}</span>`);
-        if (runtime) metadataHtml.push(`<span class="metadata-item">${runtime}</span>`);
-        if (year) metadataHtml.push(`<span class="metadata-item">${year}</span>`);
-        if (imdbScore !== 'N/A') metadataHtml.push(`<span class="metadata-item imdb-score">IMDb ${imdbScore}</span>`);
-
-
-        detailsContent.innerHTML = `
-            <div class="modal-info-container">
-                <img src="${posterUrl}" alt="Pôster de ${title}" class="modal-poster">
-                <div class="modal-text-content">
-                    
-                    <h3>${title}</h3>
-                    
-                    <p class="modal-metadata">
-                        ${metadataHtml.join('\n')}
-                    </p>
-                    
-                    <p class="modal-sinopse">${sinopse}</p>
-
-                    <div class="modal-actions">
-                        <button class="watch-button action-button primary-button" 
-                                data-id="${tmdbId}" data-type="${mediaType}" data-title="${title}">
-                            ▶︎ Assistir
-                        </button>
-                        <button class="action-button icon-button modal-favorite-button"
-                                data-id="${tmdbId}" data-type="${mediaType}">
-                            <span class="icon-save ${favClass}">${favIcon}</span>
-                        </button>
-                    </div>
-
-                </div>
-            </div>
-            
-            <div style="clear: both;"></div>
-        `;
-        
-        // Reconecta o listener para o botão Assistir no modal
-        detailsContent.querySelector('.watch-button').addEventListener('click', (e) => {
-            const id = e.target.dataset.id;
-            const type = e.target.dataset.type;
-            const title = e.target.dataset.title;
-            // Fecha o modal e inicia o player
-            detailsModal.style.display = 'none';
-            handleWatchClick(id, type, title);
-        });
-        
-        // Anexa o listener para o botão Favoritar no Modal
-        detailsContent.querySelector('.modal-favorite-button').addEventListener('click', (e) => {
-            const id = e.currentTarget.dataset.id;
-            const type = e.currentTarget.dataset.type;
-            toggleFavorite(id, type);
-            // O toggleFavorite já chama updateFavoriteButtonState, que atualiza o ícone
-        });
-
-
-    } catch (error) {
-        console.error('Erro ao carregar detalhes:', error);
-        detailsContent.innerHTML = `<p>Erro ao carregar detalhes: ${error.message}</p>`;
-        detailsModal.querySelector('.modal-content').classList.remove('has-backdrop');
-        detailsModal.querySelector('.modal-content').style.backgroundImage = 'none';
-    }
+/* ---------- HELPERS DE VIEW ---------- */
+function resetToResultsView() {
+  if (catalogContainer) catalogContainer.style.display = 'none';
+  if (resultsContainer) resultsContainer.style.display = 'block';
+  if (playerContainer) playerContainer.style.display = 'none';
+  if (paginationControls) paginationControls.style.display = 'none';
+}
+function resetToPlayerView(title) {
+  if (catalogContainer) catalogContainer.style.display = 'none';
+  if (resultsContainer) resultsContainer.style.display = 'none';
+  if (playerContainer) playerContainer.style.display = 'block';
+  if (playerTitle) playerTitle.textContent = title || 'Player';
+  if (paginationControls) paginationControls.style.display = 'none';
 }
 
+/* ---------- EVENTOS GLOBAIS ---------- */
+document.body.addEventListener('click', (e) => {
+  const detailBtn = e.target.closest('.details-button');
+  if (detailBtn) { e.stopPropagation(); const card = detailBtn.closest('.movie-card'); if (card) showDetailsModal(card.dataset.id, card.dataset.type); return; }
+  const favBtn = e.target.closest('.icon-save-button');
+  if (favBtn) { e.stopPropagation(); toggleFavorite(favBtn.dataset.id, favBtn.dataset.type); return; }
+  const watchChannelBtn = e.target.closest('.watch-channel-button');
+  if (watchChannelBtn) { const url = watchChannelBtn.dataset.stream; if (url) playLiveStream(url); return; }
+  const card = e.target.closest('.movie-card');
+  if (card && !e.target.closest('.icon-button') && !e.target.closest('.details-button')) { handleWatchClick(card.dataset.id, card.dataset.type, card.dataset.title); return; }
+});
 
-/**
- * Função para buscar e mesclar os dados de IPTV-ORG.
- */
-async function fetchAndCombineIPTVData() {
-    try {
-        // Busca os 3 arquivos essenciais: canais, streams E logos.
-        const [channelsResponse, streamsResponse, logosResponse] = await Promise.all([
-            fetch(`${IPTV_ORG_API_BASE}/channels.json`),
-            fetch(`${IPTV_ORG_API_BASE}/streams.json`),
-            fetch(`${IPTV_ORG_API_BASE}/logos.json`) 
-        ]);
+document.addEventListener('click', (e) => {
+  const a = e.target.closest('#main-nav a');
+  if (!a) return;
+  e.preventDefault();
+  const endpoint = a.dataset.endpoint;
+  const title = a.dataset.title || a.textContent.trim();
+  if (!endpoint || endpoint === 'catalog') loadCatalog();
+  else if (endpoint === 'live_tv') loadLiveTV();
+  else if (endpoint === 'favorites') loadFavoritesCatalog();
+  else loadCategory(endpoint, title, 1);
+});
 
-        if (!channelsResponse.ok || !streamsResponse.ok || !logosResponse.ok) {
-            throw new Error("Falha ao carregar um ou mais arquivos IPTV-ORG.");
-        }
+const debouncedSearch = debounce(q => searchMedia(q), 300);
+searchButton?.addEventListener('click', () => { const q = searchInput.value.trim(); if (q) searchMedia(q); else loadCatalog(); });
+searchInput?.addEventListener('input', (e) => { const q = e.target.value.trim(); if (!q) return; debouncedSearch(q); });
+searchInput?.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); const q = searchInput.value.trim(); if (q) searchMedia(q); } });
 
-        const channelsData = await channelsResponse.json();
-        const streamsData = await streamsResponse.json();
-        const logosData = await logosResponse.json(); 
-        
-        // Mapeia canais e logos por ID para acesso rápido
-        const channelMap = new Map(channelsData.map(c => [c.id, c]));
-        // Mapeia logos pela ID do canal. Muitos canais têm várias logos; pegamos a primeira.
-        const logoMap = new Map();
-        logosData.forEach(logo => {
-            if (logo.channel && !logoMap.has(logo.channel)) {
-                logoMap.set(logo.channel, logo.url);
-            }
-        });
+closeButton?.addEventListener('click', () => { closeDetailsModal(); });
+window.addEventListener('click', (e) => { if (e.target === detailsModal) closeDetailsModal(); });
 
+backButton?.addEventListener('click', () => { if (catalogContainer) { catalogContainer.style.display = 'block'; resultsContainer.style.display = 'none'; playerContainer.style.display = 'none'; } });
 
-        const combinedList = streamsData
-            // Filtra streams M3U8 válidos
-            .filter(stream => stream.url && stream.url.endsWith('.m3u8')) 
-            .map(stream => {
-                const channel = channelMap.get(stream.channel);
-                
-                if (!channel) return null; 
+seasonSelect?.addEventListener('change', (e) => { currentMedia.currentSeason = parseInt(e.target.value); updateEpisodeOptions(currentMedia.currentSeason); });
+episodeSelect?.addEventListener('change', (e) => { currentMedia.currentEpisode = parseInt(e.target.value); });
 
-                // Obtém a URL da logo diretamente do mapeamento de logos
-                const logoUrl = logoMap.get(channel.id);
+menuToggle?.addEventListener('click', () => { if (!mainNav) return; mainNav.classList.toggle('nav-hidden'); });
 
-                return {
-                    id: stream.channel,
-                    name: channel.name,
-                    category: channel.categories.join(', ') || 'Geral',
-                    streamUrl: stream.url, 
-                    // Usa a URL garantida pelo logos.json
-                    logoUrl: logoUrl || 'placeholder_logo.png' 
-                };
-            })
-            .filter(item => item !== null)
-            // Remove duplicados
-            .filter((value, index, self) => 
-                index === self.findIndex((t) => (
-                    t.id === value.id
-                ))
-            ); 
+genreScroller?.addEventListener('keydown', (e) => { if (e.key === 'ArrowRight') { e.preventDefault(); genreScroller.scrollBy({ left: 200, behavior: 'smooth' }); } if (e.key === 'ArrowLeft') { e.preventDefault(); genreScroller.scrollBy({ left: -200, behavior: 'smooth' }); } });
 
-        return combinedList;
+genrePrev?.addEventListener('click', () => { if (genreScroller) genreScroller.scrollBy({ left: -300, behavior: 'smooth' }); });
+genreNext?.addEventListener('click', () => { if (genreScroller) genreScroller.scrollBy({ left: 300, behavior: 'smooth' }); });
 
-    } catch (error) {
-        console.error('Erro CRÍTICO ao buscar e combinar dados do IPTV-ORG:', error);
-        return []; 
+/* ---------- PAGINAÇÃO: handlers dos botões ---------- */
+if (pagePrevBtn) {
+  pagePrevBtn.addEventListener('click', () => {
+    if (currentCategoryPage > 1) {
+      loadCategory(currentCategoryEndpoint, currentCategoryTitle, currentCategoryPage - 1);
     }
+  });
+}
+if (pageNextBtn) {
+  pageNextBtn.addEventListener('click', () => {
+    if (currentCategoryPage < totalCategoryPages) {
+      loadCategory(currentCategoryEndpoint, currentCategoryTitle, currentCategoryPage + 1);
+    }
+  });
 }
 
-
-/**
- * Carrega a lista de canais usando a nova fonte IPTV-ORG (TODOS OS PAÍSES).
- */
-async function loadLiveTV() {
-    resetView('results-container'); 
-    resultsContainer.innerHTML = '<h2>TV ao Vivo</h2><p>Buscando lista de canais (IPTV-ORG)...</p>';
-
-    currentCategory.endpoint = 'live_tv'; 
-    currentCategory.title = 'TV ao Vivo';
-    
-    // Carrega os dados APENAS se ainda não estiverem na memória
-    if (iptvChannels.length === 0) {
-        iptvChannels = await fetchAndCombineIPTVData();
-    }
-
-    const channels = iptvChannels;
-
-    if (channels.length === 0) {
-        resultsContainer.innerHTML = `
-            <h2>TV ao Vivo</h2>
-            <p style="color: red;">Erro: Não foi possível carregar a lista de canais ativos do IPTV-ORG. Tente novamente mais tarde.</p>
-        `;
-        return;
-    }
-
-    // Renderiza a grade de canais com o novo título
-    resultsContainer.innerHTML = `<section class="catalog-section">
-        <h2>Todos os Canais Ativos (${channels.length} itens)</h2>
-        <div id="channels-grid" class="results-grid"></div>
-    </section>`;
-    
-    const channelsGrid = document.getElementById('channels-grid');
-
-    channels.forEach(channel => {
-        const card = document.createElement('div');
-        // Adiciona a classe channel-card
-        card.className = 'movie-card channel-card';
-        
-        const logoSrc = channel.logoUrl || 'placeholder_logo.png'; 
-        const channelId = channel.id; 
-        const channelName = channel.name || 'Canal Desconhecido';
-        const channelCategory = channel.category; 
-
-        // Cards de TV Ao Vivo usam o card-info original (sem a lógica de hover)
-        card.innerHTML = `
-            <img src="${logoSrc}" 
-                 alt="${channelName}" 
-                 class="channel-logo" 
-                 loading="lazy"
-                 onerror="this.onerror=null; this.src='https://via.placeholder.com/200x200?text=Logo+N%C3%A3o+Encontrada'"> 
-            <div class="card-info">
-                <h3>${channelName}</h3> 
-                <p style="font-size: 0.9em; color: #ccc;">${channelCategory}</p>
-                <button class="watch-channel-button action-button primary-button" 
-                            data-channel-id="${channelId}" data-title="${channelName}" 
-                            style="width: 90%; margin-top: 10px;">
-                    ASSISTIR AO VIVO
-                </button>
-            </div>
-        `;
-        channelsGrid.appendChild(card);
-    });
-    
-    attachChannelListeners();
-}
-
-/**
- * Anexa listeners para os botões de ASSISTIR AO VIVO.
- */
-function attachChannelListeners() {
-    document.querySelectorAll('.watch-channel-button').forEach(button => {
-        button.onclick = null; 
-        button.onclick = (event) => {
-            const channelId = event.target.dataset.channelId;
-            const title = event.target.dataset.title;
-            
-            playLiveChannel(channelId, title); 
-        };
-    });
-}
-
-/**
- * Carrega o canal de TV no player (USANDO SOMENTE HLS.JS).
- */
-async function playLiveChannel(channelId, title) {
-    resetView('player-container');
-    playerTitle.textContent = title;
-    
-    const playerOptionsDiv = playerContainer.querySelector('.player-options');
-    if(playerOptionsDiv) {
-        playerOptionsDiv.style.display = 'none'; 
-    }
-    seriesSelectors.style.display = 'none'; 
-
-    videoPlayerDiv.innerHTML = `<p>Buscando URL do stream para ${title}...</p>`;
-
-    // Busca a URL M3U8 nos dados pré-carregados
-    const channel = iptvChannels.find(c => c.id === channelId);
-    const streamUrl = channel ? channel.streamUrl : null;
-
-    if (!streamUrl) {
-        videoPlayerDiv.innerHTML = `
-            <div style="padding: 30px; background-color: #2a2a2a; border-radius: 8px; max-width: 500px; margin: 50px auto; text-align: center; border: 1px solid red;">
-                <p style="color: red; font-size: 1.1em; margin-bottom: 15px;">
-                    ❌ Stream Indisponível
-                </p>
-                <p style="color: #ccc; font-size: 0.9em; margin-bottom: 20px;">
-                    Não foi possível encontrar a URL de stream M3U8 para **${title}** na base de dados IPTV-ORG.
-                </p>
-                <button onclick="loadLiveTV()" class="action-button primary-button" style="background-color: #555;">
-                    Voltar para a lista
-                </button>
-            </div>
-        `;
-        return;
-    }
-
-    // Tenta reproduzir o M3U8 via HLS.js
-    const video = document.createElement('video');
-    video.id = 'live-video-player';
-    video.controls = true;
-    video.autoplay = true; 
-    video.style.width = '100%';
-    video.style.height = '100%';
-    
-    videoPlayerDiv.innerHTML = '';
-    videoPlayerDiv.appendChild(video);
-    
-    if (typeof Hls !== 'undefined' && Hls.isSupported()) {
-        const hls = new Hls();
-        hls.loadSource(streamUrl);
-        hls.attachMedia(video);
-        hls.on(Hls.Events.MANIFEST_PARSED, function() {
-            video.play().catch(error => {
-                console.warn('Autoplay bloqueado pelo navegador.', error);
-                videoPlayerDiv.insertAdjacentHTML('beforeend', `
-                    <div class="stream-info-overlay" style="margin-top: 20px;">
-                        <p style="color: #ffcc00; font-weight: bold; margin-bottom: 5px;">
-                            ⚠️ CLIQUE NECESSÁRIO
-                        </p>
-                        <p style="color: #ccc; font-size: 0.9em; margin-bottom: 0;">
-                            O navegador bloqueou a reprodução automática. Clique no botão de Play no vídeo.
-                        </p>
-                    </div>
-                `);
-            });
-        });
-    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-        video.src = streamUrl;
-        video.addEventListener('loadedmetadata', function() {
-            video.play();
-        });
-    } else {
-         videoPlayerDiv.innerHTML = `<p style="color: red; margin-top: 50px;">
-            Seu navegador não suporta o formato de stream (M3U8).
-        </p>`;
-    }
-}
-
-
-/**
- * Carrega e exibe a lista de favoritos.
- */
-async function loadFavoritesCatalog() {
-    resetView('results-container');
-    resultsContainer.innerHTML = '<h2>Favoritos</h2><p>Carregando seus filmes e séries favoritos...</p>';
-    currentCategory.endpoint = 'favorites';
-    currentCategory.title = 'Favoritos';
-
-    const favoriteItems = loadFavoritesFromLocalStorage();
-
-    if (favoriteItems.length === 0) {
-        resultsContainer.innerHTML = `
-            <section class="catalog-section">
-                <h2>Seus Favoritos</h2>
-                <p class="empty-list-message">
-                    Você ainda não adicionou nenhum filme ou série aos seus favoritos.
-                    Adicione um item clicando no ícone <span style="color: #e50914;">&#9825;</span> no card!
-                </p>
-            </section>
-        `;
-        return;
-    }
-
-    // 1. Coleta IDs de filmes e séries
-    const tmdbIdsToFetch = favoriteItems.map(item => {
-        const [type, id] = item.split('-');
-        return { type: type, id: id };
-    });
-
-    // 2. Cria as promessas de busca no TMDB
-    const fetchPromises = tmdbIdsToFetch.map(({ id, type }) => {
-        const url = `${TMDB_BASE_URL}/${type}/${id}?api_key=${TMDB_API_KEY}&language=pt-BR`;
-        return fetch(url)
-            .then(res => res.json())
-            .catch(err => {
-                console.error(`Erro ao buscar ${type} ID ${id}:`, err);
-                return null;
-            });
-    });
-
-    const rawResults = await Promise.all(fetchPromises);
-    
-    // 3. Filtra resultados válidos e renderiza
-    const validResults = rawResults.filter(item => item && item.id);
-    
-    resultsContainer.innerHTML = `<section class="catalog-section">
-        <h2>Seus Favoritos (${validResults.length} itens)</h2>
-        <div id="favorites-grid" class="results-grid"></div>
-    </section>`;
-    
-    const favoritesGridContainer = document.getElementById('favorites-grid');
-
-    // Mapeia os resultados para o formato esperado pelo displayResults
-    const normalizedResults = validResults.map(item => ({
-        ...item,
-        media_type: item.title ? 'movie' : 'tv', // Tenta inferir o tipo
-    }));
-    
-    // Passa a lista normalizada para a função que renderiza os cards
-    displayResults(normalizedResults, favoritesGridContainer);
-}
-
-/**
- * Função de busca manual (quando o usuário digita na busca).
- */
+/* ---------- SEARCH ---------- */
 async function searchMedia(query) {
-    if (!query) return; 
-
-    resetView('results-container');
-    resultsContainer.innerHTML = `<p>Buscando resultados para "${query}"...</p>`;
-    currentCategory.endpoint = null; 
-
-    const url = `${TMDB_BASE_URL}/search/multi?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(query)}&language=pt-BR`;
-
-    try {
-        const response = await fetch(url);
-        if (!response.ok) {
-            throw new Error('Erro ao buscar dados do TMDB. Verifique a chave da API.');
-        }
-        const data = await response.json();
-        
-        resultsContainer.innerHTML = `<section class="catalog-section"><h2>Resultados da Busca</h2><div id="search-results" class="results-grid"></div></section>`;
-        const searchResultsContainer = document.getElementById('search-results');
-
-        displayResults(data.results, searchResultsContainer);
-
-    } catch (error) {
-        console.error('Erro na busca:', error);
-        resultsContainer.innerHTML = `<p>Erro: ${error.message}</p>`;
-    }
+  if (!query) return;
+  try {
+    resetToResultsView();
+    if (!resultsContainer) return;
+    resultsContainer.innerHTML = `<section class="catalog-section"><h2>Resultados da Busca</h2><div id="search-results" class="results-grid">Buscando...</div></section>`;
+    const data = await cachedFetch(`${TMDB_BASE_URL}/search/multi?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(query)}&language=pt-BR`);
+    displayResults(data.results || [], document.getElementById('search-results'));
+    if (paginationControls) paginationControls.style.display = 'none';
+  } catch (err) {
+    console.error('Erro searchMedia', err);
+    if (resultsContainer) resultsContainer.innerHTML = `<p>Erro: ${err.message}</p>`;
+  }
 }
 
-
-// --- 3. FUNÇÕES DE PLAYER E MODAL ---
-
-async function loadSeriesOptions(tmdbId) {
-    const url = `${TMDB_BASE_URL}/tv/${tmdbId}?api_key=${TMDB_API_KEY}&language=pt-BR`;
-    
-    try {
-        const response = await fetch(url);
-        const data = await response.json();
-
-        const validSeasons = data.seasons.filter(s => s.season_number > 0 && s.episode_count > 0);
-        
-        currentMedia.seasons = validSeasons;
-        
-        seasonSelect.innerHTML = '';
-        validSeasons.forEach(season => {
-            const option = document.createElement('option');
-            option.value = season.season_number;
-            option.textContent = `T${season.season_number}`;
-            seasonSelect.appendChild(option);
-        });
-
-        currentMedia.currentSeason = validSeasons.length > 0 ? validSeasons[0].season_number : 1;
-        updateEpisodeOptions(currentMedia.currentSeason);
-
-    } catch (error) {
-        console.error('Erro ao carregar opções de séries:', error);
-        seriesSelectors.innerHTML = `<p>Erro: Falha ao carregar temporadas.</p>`;
-    }
-}
-
-function updateEpisodeOptions(seasonNumber) {
-    const season = currentMedia.seasons.find(s => s.season_number == seasonNumber);
-    episodeSelect.innerHTML = ''; 
-    if (season && season.episode_count > 0) {
-        for (let i = 1; i <= season.episode_count; i++) {
-            const option = document.createElement('option');
-            option.value = i;
-            option.textContent = `E${i}`;
-            episodeSelect.appendChild(option);
-        }
-        currentMedia.currentEpisode = 1; 
-    } else {
-        currentMedia.currentEpisode = null;
-    }
-}
-
-async function handleWatchClick(tmdbId, mediaType, mediaTitle) {
-    const mediaId = parseInt(tmdbId);
-    if (isNaN(mediaId)) {
-        console.error("ID de mídia inválido recebido:", tmdbId);
-        return; 
-    }
-
-    Object.assign(currentMedia, {
-        tmdbId: mediaId, mediaType, title: mediaTitle, imdbId: null, seasons: [], currentSeason: 1, currentEpisode: 1
-    });
-
-    resetView('player-container'); 
-    playerTitle.textContent = mediaTitle;
-    
-    const playerOptionsDiv = playerContainer.querySelector('.player-options');
-    if(playerOptionsDiv) {
-        playerOptionsDiv.style.display = 'flex'; 
-    }
-    
-    seriesSelectors.style.display = 'none'; 
-
-    await getImdbId(mediaId, mediaType);
-    
-    if (mediaType === 'tv') {
-        seriesSelectors.style.display = 'block';
-        await loadSeriesOptions(mediaId);
-    }
-    
-    createPlayer(); 
-}
-
-function createPlayer() {
-    const source = playerSourceSelect.value;
-    const { tmdbId, mediaType, imdbId, currentSeason, currentEpisode } = currentMedia;
-
-    videoPlayerDiv.innerHTML = ''; 
-    let embedUrl = '';
-    const typeParam = mediaType === 'movie' ? 'movie' : 'tv';
-    
-    if (source === 'megaembed.com') {
-        if (mediaType === 'movie') {
-            embedUrl = `https://megaembed.com/embed/${tmdbId}`;
-        } else {
-            embedUrl = `https://megaembed.com/embed/${tmdbId}/${currentSeason}/${currentEpisode}`;
-        }
-    } else if (source === 'vidsrc-embed.ru') {
-        const langParam = '&ds_lang=pt'; 
-        if (mediaType === 'movie') {
-            embedUrl = `https://vidsrc-embed.ru/embed/${typeParam}?tmdb=${tmdbId}${langParam}`;
-        } else {
-            embedUrl = `https://vidsrc-embed.ru/embed/${typeParam}?tmdb=${tmdbId}&season=${currentSeason}&episode=${currentEpisode}${langParam}`;
-        }
-    } else if (source === '2embed.top') {
-        if (mediaType === 'movie') {
-            embedUrl = `https://2embed.top/embed/movie/${tmdbId}`;
-        } else {
-            embedUrl = `https://2embed.top/embed/tv/${tmdbId}/${currentSeason}/${currentEpisode}`;
-        }
-    } else if (source === 'vidsrc.cc') {
-        const version = 'v2';
-        if (mediaType === 'movie') {
-            embedUrl = `https://vidsrc.cc/${version}/embed/movie/${tmdbId}`;
-        } else {
-            embedUrl = `https://vidsrc.cc/${version}/embed/tv/${tmdbId}/${currentSeason}/${currentEpisode}`;
-        }
-    } else if (source === 'playerflixapi.com') {
-        if (mediaType === 'movie') {
-            if (!imdbId) {
-                videoPlayerDiv.innerHTML = `<p>A fonte **playerflixapi.com** exige o ID do IMDB para filmes. Tente outra fonte.</p>`;
-                return;
-            }
-            embedUrl = `https://playerflixapi.com/filme/${imdbId}`;
-        } else {
-            embedUrl = `https://playerflixapi.com/serie/${tmdbId}/${currentSeason}/${currentEpisode}`;
-        }
-    } else if (source === 'vidsrc.to') {
-        if (!imdbId) {
-            videoPlayerDiv.innerHTML = `<p>A fonte **vidsrc.to** exige o ID do IMDB para filmes. Tente outra fonte.</p>`;
-            return;
-        }
-        if (mediaType === 'movie') {
-            embedUrl = `https://vidsrc.to/embed/movie/${imdbId}`;
-        } else {
-             videoPlayerDiv.innerHTML = `<p>A fonte **vidsrc.to** não suporta seleção direta de episódio. Tente outra opção.</p>`;
-             return;
-        }
-    } else {
-        videoPlayerDiv.innerHTML = `<p>Fonte de player desconhecida.</p>`;
-        return;
-    }
-
-    const iframe = document.createElement('iframe');
-    iframe.src = embedUrl;
-    iframe.allowFullscreen = true; 
-    iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture';
-    iframe.style.width = '100%';
-    iframe.style.height = '100%';
-    
-    videoPlayerDiv.appendChild(iframe);
-}
-
-async function showDetailsModal(tmdbId, mediaType) {
-    const typeEndpoint = mediaType === 'movie' ? 'movie' : 'tv';
-    // Buscamos o backdrop_path no mesmo endpoint
-    const url = `${TMDB_BASE_URL}/${typeEndpoint}/${tmdbId}?api_key=${TMDB_API_KEY}&language=pt-BR`;
-    
-    detailsContent.innerHTML = '<p>Carregando detalhes...</p>';
-    detailsModal.style.display = 'block';
-
-    try {
-        const response = await fetch(url);
-        const data = await response.json();
-
-        const title = data.title || data.name;
-        const sinopse = data.overview || 'Sinopse não disponível em Português.';
-        const posterPath = data.poster_path;
-        const backdropPath = data.backdrop_path; // Novo: Captura o backdrop
-        
-        const posterUrl = posterPath ? `${TMDB_POSTER_BASE_URL}${posterPath}` : '';
-        const backdropUrl = backdropPath ? `${TMDB_IMAGE_BASE_URL}${backdropPath}` : '';
-        
-        const year = (data.release_date || data.first_air_date || '').substring(0, 4);
-        const seasonsCount = data.number_of_seasons ? `${data.number_of_seasons} Temporada${data.number_of_seasons > 1 ? 's' : ''}` : null;
-        const runtime = data.runtime ? `${data.runtime} min` : null;
-        
-        const imdbScore = data.vote_average ? data.vote_average.toFixed(1) : 'N/A';
-        const displayType = mediaType === 'movie' ? 'Filme' : 'Série';
-        
-        // Favoritos
-        const isFav = isFavorite(tmdbId, mediaType);
-        const favIcon = isFav ? '&#9829;' : '&#9825;';
-        const favClass = isFav ? 'is-favorite' : '';
-
-
-        // Atualiza o fundo do modal para o efeito backdrop
-        const modalContent = detailsModal.querySelector('.modal-content');
-        if (backdropUrl) {
-            modalContent.style.backgroundImage = `url(${backdropUrl})`;
-            modalContent.classList.add('has-backdrop');
-        } else {
-            modalContent.style.backgroundImage = 'none';
-            modalContent.classList.remove('has-backdrop');
-        }
-
-        // Metadados formatados
-        const metadataHtml = [];
-        if (seasonsCount) metadataHtml.push(`<span class="metadata-item">${seasonsCount}</span>`);
-        if (runtime) metadataHtml.push(`<span class="metadata-item">${runtime}</span>`);
-        if (year) metadataHtml.push(`<span class="metadata-item">${year}</span>`);
-        if (imdbScore !== 'N/A') metadataHtml.push(`<span class="metadata-item imdb-score">IMDb ${imdbScore}</span>`);
-
-
-        detailsContent.innerHTML = `
-            <div class="modal-info-container">
-                <img src="${posterUrl}" alt="Pôster de ${title}" class="modal-poster">
-                <div class="modal-text-content">
-                    
-                    <h3>${title}</h3>
-                    
-                    <p class="modal-metadata">
-                        ${metadataHtml.join('\n')}
-                    </p>
-                    
-                    <p class="modal-sinopse">${sinopse}</p>
-
-                    <div class="modal-actions">
-                        <button class="watch-button action-button primary-button" 
-                                data-id="${tmdbId}" data-type="${mediaType}" data-title="${title}">
-                            ▶︎ Assistir
-                        </button>
-                        <button class="action-button icon-button modal-favorite-button"
-                                data-id="${tmdbId}" data-type="${mediaType}">
-                            <span class="icon-save ${favClass}">${favIcon}</span>
-                        </button>
-                    </div>
-
-                </div>
-            </div>
-            
-            <div style="clear: both;"></div>
-        `;
-        
-        // Reconecta o listener para o botão Assistir no modal
-        detailsContent.querySelector('.watch-button').addEventListener('click', (e) => {
-            const id = e.target.dataset.id;
-            const type = e.target.dataset.type;
-            const title = e.target.dataset.title;
-            // Fecha o modal e inicia o player
-            detailsModal.style.display = 'none';
-            handleWatchClick(id, type, title);
-        });
-        
-        // Anexa o listener para o botão Favoritar no Modal
-        detailsContent.querySelector('.modal-favorite-button').addEventListener('click', (e) => {
-            const id = e.currentTarget.dataset.id;
-            const type = e.currentTarget.dataset.type;
-            toggleFavorite(id, type);
-            // O toggleFavorite já chama updateFavoriteButtonState, que atualiza o ícone
-        });
-
-
-    } catch (error) {
-        console.error('Erro ao carregar detalhes:', error);
-        detailsContent.innerHTML = `<p>Erro ao carregar detalhes: ${error.message}</p>`;
-        detailsModal.querySelector('.modal-content').classList.remove('has-backdrop');
-        detailsModal.querySelector('.modal-content').style.backgroundImage = 'none';
-    }
-}
-
-
-/**
- * Função para buscar e mesclar os dados de IPTV-ORG.
- */
-async function fetchAndCombineIPTVData() {
-    try {
-        // Busca os 3 arquivos essenciais: canais, streams E logos.
-        const [channelsResponse, streamsResponse, logosResponse] = await Promise.all([
-            fetch(`${IPTV_ORG_API_BASE}/channels.json`),
-            fetch(`${IPTV_ORG_API_BASE}/streams.json`),
-            fetch(`${IPTV_ORG_API_BASE}/logos.json`) 
-        ]);
-
-        if (!channelsResponse.ok || !streamsResponse.ok || !logosResponse.ok) {
-            throw new Error("Falha ao carregar um ou mais arquivos IPTV-ORG.");
-        }
-
-        const channelsData = await channelsResponse.json();
-        const streamsData = await streamsResponse.json();
-        const logosData = await logosResponse.json(); 
-        
-        // Mapeia canais e logos por ID para acesso rápido
-        const channelMap = new Map(channelsData.map(c => [c.id, c]));
-        // Mapeia logos pela ID do canal. Muitos canais têm várias logos; pegamos a primeira.
-        const logoMap = new Map();
-        logosData.forEach(logo => {
-            if (logo.channel && !logoMap.has(logo.channel)) {
-                logoMap.set(logo.channel, logo.url);
-            }
-        });
-
-
-        const combinedList = streamsData
-            // Filtra streams M3U8 válidos
-            .filter(stream => stream.url && stream.url.endsWith('.m3u8')) 
-            .map(stream => {
-                const channel = channelMap.get(stream.channel);
-                
-                if (!channel) return null; 
-
-                // Obtém a URL da logo diretamente do mapeamento de logos
-                const logoUrl = logoMap.get(channel.id);
-
-                return {
-                    id: stream.channel,
-                    name: channel.name,
-                    category: channel.categories.join(', ') || 'Geral',
-                    streamUrl: stream.url, 
-                    // Usa a URL garantida pelo logos.json
-                    logoUrl: logoUrl || 'placeholder_logo.png' 
-                };
-            })
-            .filter(item => item !== null)
-            // Remove duplicados
-            .filter((value, index, self) => 
-                index === self.findIndex((t) => (
-                    t.id === value.id
-                ))
-            ); 
-
-        return combinedList;
-
-    } catch (error) {
-        console.error('Erro CRÍTICO ao buscar e combinar dados do IPTV-ORG:', error);
-        return []; 
-    }
-}
-
-
-/**
- * Carrega a lista de canais usando a nova fonte IPTV-ORG (TODOS OS PAÍSES).
- */
-async function loadLiveTV() {
-    resetView('results-container'); 
-    resultsContainer.innerHTML = '<h2>TV ao Vivo</h2><p>Buscando lista de canais (IPTV-ORG)...</p>';
-
-    currentCategory.endpoint = 'live_tv'; 
-    currentCategory.title = 'TV ao Vivo';
-    
-    // Carrega os dados APENAS se ainda não estiverem na memória
-    if (iptvChannels.length === 0) {
-        iptvChannels = await fetchAndCombineIPTVData();
-    }
-
-    const channels = iptvChannels;
-
-    if (channels.length === 0) {
-        resultsContainer.innerHTML = `
-            <h2>TV ao Vivo</h2>
-            <p style="color: red;">Erro: Não foi possível carregar a lista de canais ativos do IPTV-ORG. Tente novamente mais tarde.</p>
-        `;
-        return;
-    }
-
-    // Renderiza a grade de canais com o novo título
-    resultsContainer.innerHTML = `<section class="catalog-section">
-        <h2>Todos os Canais Ativos (${channels.length} itens)</h2>
-        <div id="channels-grid" class="results-grid"></div>
-    </section>`;
-    
-    const channelsGrid = document.getElementById('channels-grid');
-
-    channels.forEach(channel => {
-        const card = document.createElement('div');
-        // Adiciona a classe channel-card
-        card.className = 'movie-card channel-card';
-        
-        const logoSrc = channel.logoUrl || 'placeholder_logo.png'; 
-        const channelId = channel.id; 
-        const channelName = channel.name || 'Canal Desconhecido';
-        const channelCategory = channel.category; 
-
-        // Cards de TV Ao Vivo usam o card-info original (sem a lógica de hover)
-        card.innerHTML = `
-            <img src="${logoSrc}" 
-                 alt="${channelName}" 
-                 class="channel-logo" 
-                 loading="lazy"
-                 onerror="this.onerror=null; this.src='https://via.placeholder.com/200x200?text=Logo+N%C3%A3o+Encontrada'"> 
-            <div class="card-info">
-                <h3>${channelName}</h3> 
-                <p style="font-size: 0.9em; color: #ccc;">${channelCategory}</p>
-                <button class="watch-channel-button action-button primary-button" 
-                            data-channel-id="${channelId}" data-title="${channelName}" 
-                            style="width: 90%; margin-top: 10px;">
-                    ASSISTIR AO VIVO
-                </button>
-            </div>
-        `;
-        channelsGrid.appendChild(card);
-    });
-    
-    attachChannelListeners();
-}
-
-/**
- * Anexa listeners para os botões de ASSISTIR AO VIVO.
- */
-function attachChannelListeners() {
-    document.querySelectorAll('.watch-channel-button').forEach(button => {
-        button.onclick = null; 
-        button.onclick = (event) => {
-            const channelId = event.target.dataset.channelId;
-            const title = event.target.dataset.title;
-            
-            playLiveChannel(channelId, title); 
-        };
-    });
-}
-
-/**
- * Carrega o canal de TV no player (USANDO SOMENTE HLS.JS).
- */
-async function playLiveChannel(channelId, title) {
-    resetView('player-container');
-    playerTitle.textContent = title;
-    
-    const playerOptionsDiv = playerContainer.querySelector('.player-options');
-    if(playerOptionsDiv) {
-        playerOptionsDiv.style.display = 'none'; 
-    }
-    seriesSelectors.style.display = 'none'; 
-
-    videoPlayerDiv.innerHTML = `<p>Buscando URL do stream para ${title}...</p>`;
-
-    // Busca a URL M3U8 nos dados pré-carregados
-    const channel = iptvChannels.find(c => c.id === channelId);
-    const streamUrl = channel ? channel.streamUrl : null;
-
-    if (!streamUrl) {
-        videoPlayerDiv.innerHTML = `
-            <div style="padding: 30px; background-color: #2a2a2a; border-radius: 8px; max-width: 500px; margin: 50px auto; text-align: center; border: 1px solid red;">
-                <p style="color: red; font-size: 1.1em; margin-bottom: 15px;">
-                    ❌ Stream Indisponível
-                </p>
-                <p style="color: #ccc; font-size: 0.9em; margin-bottom: 20px;">
-                    Não foi possível encontrar a URL de stream M3U8 para **${title}** na base de dados IPTV-ORG.
-                </p>
-                <button onclick="loadLiveTV()" class="action-button primary-button" style="background-color: #555;">
-                    Voltar para a lista
-                </button>
-            </div>
-        `;
-        return;
-    }
-
-    // Tenta reproduzir o M3U8 via HLS.js
-    const video = document.createElement('video');
-    video.id = 'live-video-player';
-    video.controls = true;
-    video.autoplay = true; 
-    video.style.width = '100%';
-    video.style.height = '100%';
-    
-    videoPlayerDiv.innerHTML = '';
-    videoPlayerDiv.appendChild(video);
-    
-    if (typeof Hls !== 'undefined' && Hls.isSupported()) {
-        const hls = new Hls();
-        hls.loadSource(streamUrl);
-        hls.attachMedia(video);
-        hls.on(Hls.Events.MANIFEST_PARSED, function() {
-            video.play().catch(error => {
-                console.warn('Autoplay bloqueado pelo navegador.', error);
-                videoPlayerDiv.insertAdjacentHTML('beforeend', `
-                    <div class="stream-info-overlay" style="margin-top: 20px;">
-                        <p style="color: #ffcc00; font-weight: bold; margin-bottom: 5px;">
-                            ⚠️ CLIQUE NECESSÁRIO
-                        </p>
-                        <p style="color: #ccc; font-size: 0.9em; margin-bottom: 0;">
-                            O navegador bloqueou a reprodução automática. Clique no botão de Play no vídeo.
-                        </p>
-                    </div>
-                `);
-            });
-        });
-    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-        video.src = streamUrl;
-        video.addEventListener('loadedmetadata', function() {
-            video.play();
-        });
-    } else {
-         videoPlayerDiv.innerHTML = `<p style="color: red; margin-top: 50px;">
-            Seu navegador não suporta o formato de stream (M3U8).
-        </p>`;
-    }
-}
-
-
-/**
- * Carrega e exibe a lista de favoritos.
- */
-async function loadFavoritesCatalog() {
-    resetView('results-container');
-    resultsContainer.innerHTML = '<h2>Favoritos</h2><p>Carregando seus filmes e séries favoritos...</p>';
-    currentCategory.endpoint = 'favorites';
-    currentCategory.title = 'Favoritos';
-
-    const favoriteItems = loadFavoritesFromLocalStorage();
-
-    if (favoriteItems.length === 0) {
-        resultsContainer.innerHTML = `
-            <section class="catalog-section">
-                <h2>Seus Favoritos</h2>
-                <p class="empty-list-message">
-                    Você ainda não adicionou nenhum filme ou série aos seus favoritos.
-                    Adicione um item clicando no ícone <span style="color: #e50914;">&#9825;</span> no card!
-                </p>
-            </section>
-        `;
-        return;
-    }
-
-    // 1. Coleta IDs de filmes e séries
-    const tmdbIdsToFetch = favoriteItems.map(item => {
-        const [type, id] = item.split('-');
-        return { type: type, id: id };
-    });
-
-    // 2. Cria as promessas de busca no TMDB
-    const fetchPromises = tmdbIdsToFetch.map(({ id, type }) => {
-        const url = `${TMDB_BASE_URL}/${type}/${id}?api_key=${TMDB_API_KEY}&language=pt-BR`;
-        return fetch(url)
-            .then(res => res.json())
-            .catch(err => {
-                console.error(`Erro ao buscar ${type} ID ${id}:`, err);
-                return null;
-            });
-    });
-
-    const rawResults = await Promise.all(fetchPromises);
-    
-    // 3. Filtra resultados válidos e renderiza
-    const validResults = rawResults.filter(item => item && item.id);
-    
-    resultsContainer.innerHTML = `<section class="catalog-section">
-        <h2>Seus Favoritos (${validResults.length} itens)</h2>
-        <div id="favorites-grid" class="results-grid"></div>
-    </section>`;
-    
-    const favoritesGridContainer = document.getElementById('favorites-grid');
-
-    // Mapeia os resultados para o formato esperado pelo displayResults
-    const normalizedResults = validResults.map(item => ({
-        ...item,
-        media_type: item.title ? 'movie' : 'tv', // Tenta inferir o tipo
-    }));
-    
-    // Passa a lista normalizada para a função que renderiza os cards
-    displayResults(normalizedResults, favoritesGridContainer);
-}
-
-/**
- * Função de busca manual (quando o usuário digita na busca).
- */
-async function searchMedia(query) {
-    if (!query) return; 
-
-    resetView('results-container');
-    resultsContainer.innerHTML = `<p>Buscando resultados para "${query}"...</p>`;
-    currentCategory.endpoint = null; 
-
-    const url = `${TMDB_BASE_URL}/search/multi?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(query)}&language=pt-BR`;
-
-    try {
-        const response = await fetch(url);
-        if (!response.ok) {
-            throw new Error('Erro ao buscar dados do TMDB. Verifique a chave da API.');
-        }
-        const data = await response.json();
-        
-        resultsContainer.innerHTML = `<section class="catalog-section"><h2>Resultados da Busca</h2><div id="search-results" class="results-grid"></div></section>`;
-        const searchResultsContainer = document.getElementById('search-results');
-
-        displayResults(data.results, searchResultsContainer);
-
-    } catch (error) {
-        console.error('Erro na busca:', error);
-        resultsContainer.innerHTML = `<p>Erro: ${error.message}</p>`;
-    }
-}
-
-
-// --- 3. FUNÇÕES DE PLAYER E MODAL ---
-
-async function loadSeriesOptions(tmdbId) {
-    const url = `${TMDB_BASE_URL}/tv/${tmdbId}?api_key=${TMDB_API_KEY}&language=pt-BR`;
-    
-    try {
-        const response = await fetch(url);
-        const data = await response.json();
-
-        const validSeasons = data.seasons.filter(s => s.season_number > 0 && s.episode_count > 0);
-        
-        currentMedia.seasons = validSeasons;
-        
-        seasonSelect.innerHTML = '';
-        validSeasons.forEach(season => {
-            const option = document.createElement('option');
-            option.value = season.season_number;
-            option.textContent = `T${season.season_number}`;
-            seasonSelect.appendChild(option);
-        });
-
-        currentMedia.currentSeason = validSeasons.length > 0 ? validSeasons[0].season_number : 1;
-        updateEpisodeOptions(currentMedia.currentSeason);
-
-    } catch (error) {
-        console.error('Erro ao carregar opções de séries:', error);
-        seriesSelectors.innerHTML = `<p>Erro: Falha ao carregar temporadas.</p>`;
-    }
-}
-
-function updateEpisodeOptions(seasonNumber) {
-    const season = currentMedia.seasons.find(s => s.season_number == seasonNumber);
-    episodeSelect.innerHTML = ''; 
-    if (season && season.episode_count > 0) {
-        for (let i = 1; i <= season.episode_count; i++) {
-            const option = document.createElement('option');
-            option.value = i;
-            option.textContent = `E${i}`;
-            episodeSelect.appendChild(option);
-        }
-        currentMedia.currentEpisode = 1; 
-    } else {
-        currentMedia.currentEpisode = null;
-    }
-}
-
-async function handleWatchClick(tmdbId, mediaType, mediaTitle) {
-    const mediaId = parseInt(tmdbId);
-    if (isNaN(mediaId)) {
-        console.error("ID de mídia inválido recebido:", tmdbId);
-        return; 
-    }
-
-    Object.assign(currentMedia, {
-        tmdbId: mediaId, mediaType, title: mediaTitle, imdbId: null, seasons: [], currentSeason: 1, currentEpisode: 1
-    });
-
-    resetView('player-container'); 
-    playerTitle.textContent = mediaTitle;
-    
-    const playerOptionsDiv = playerContainer.querySelector('.player-options');
-    if(playerOptionsDiv) {
-        playerOptionsDiv.style.display = 'flex'; 
-    }
-    
-    seriesSelectors.style.display = 'none'; 
-
-    await getImdbId(mediaId, mediaType);
-    
-    if (mediaType === 'tv') {
-        seriesSelectors.style.display = 'block';
-        await loadSeriesOptions(mediaId);
-    }
-    
-    createPlayer(); 
-}
-
-function createPlayer() {
-    const source = playerSourceSelect.value;
-    const { tmdbId, mediaType, imdbId, currentSeason, currentEpisode } = currentMedia;
-
-    videoPlayerDiv.innerHTML = ''; 
-    let embedUrl = '';
-    const typeParam = mediaType === 'movie' ? 'movie' : 'tv';
-    
-    if (source === 'megaembed.com') {
-        if (mediaType === 'movie') {
-            embedUrl = `https://megaembed.com/embed/${tmdbId}`;
-        } else {
-            embedUrl = `https://megaembed.com/embed/${tmdbId}/${currentSeason}/${currentEpisode}`;
-        }
-    } else if (source === 'vidsrc-embed.ru') {
-        const langParam = '&ds_lang=pt'; 
-        if (mediaType === 'movie') {
-            embedUrl = `https://vidsrc-embed.ru/embed/${typeParam}?tmdb=${tmdbId}${langParam}`;
-        } else {
-            embedUrl = `https://vidsrc-embed.ru/embed/${typeParam}?tmdb=${tmdbId}&season=${currentSeason}&episode=${currentEpisode}${langParam}`;
-        }
-    } else if (source === '2embed.top') {
-        if (mediaType === 'movie') {
-            embedUrl = `https://2embed.top/embed/movie/${tmdbId}`;
-        } else {
-            embedUrl = `https://2embed.top/embed/tv/${tmdbId}/${currentSeason}/${currentEpisode}`;
-        }
-    } else if (source === 'vidsrc.cc') {
-        const version = 'v2';
-        if (mediaType === 'movie') {
-            embedUrl = `https://vidsrc.cc/${version}/embed/movie/${tmdbId}`;
-        } else {
-            embedUrl = `https://vidsrc.cc/${version}/embed/tv/${tmdbId}/${currentSeason}/${currentEpisode}`;
-        }
-    } else if (source === 'playerflixapi.com') {
-        if (mediaType === 'movie') {
-            if (!imdbId) {
-                videoPlayerDiv.innerHTML = `<p>A fonte **playerflixapi.com** exige o ID do IMDB para filmes. Tente outra fonte.</p>`;
-                return;
-            }
-            embedUrl = `https://playerflixapi.com/filme/${imdbId}`;
-        } else {
-            embedUrl = `https://playerflixapi.com/serie/${tmdbId}/${currentSeason}/${currentEpisode}`;
-        }
-    } else if (source === 'vidsrc.to') {
-        if (!imdbId) {
-            videoPlayerDiv.innerHTML = `<p>A fonte **vidsrc.to** exige o ID do IMDB para filmes. Tente outra fonte.</p>`;
-            return;
-        }
-        if (mediaType === 'movie') {
-            embedUrl = `https://vidsrc.to/embed/movie/${imdbId}`;
-        } else {
-             videoPlayerDiv.innerHTML = `<p>A fonte **vidsrc.to** não suporta seleção direta de episódio. Tente outra opção.</p>`;
-             return;
-        }
-    } else {
-        videoPlayerDiv.innerHTML = `<p>Fonte de player desconhecida.</p>`;
-        return;
-    }
-
-    const iframe = document.createElement('iframe');
-    iframe.src = embedUrl;
-    iframe.allowFullscreen = true; 
-    iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture';
-    iframe.style.width = '100%';
-    iframe.style.height = '100%';
-    
-    videoPlayerDiv.appendChild(iframe);
-}
-
-async function showDetailsModal(tmdbId, mediaType) {
-    const typeEndpoint = mediaType === 'movie' ? 'movie' : 'tv';
-    // Buscamos o backdrop_path no mesmo endpoint
-    const url = `${TMDB_BASE_URL}/${typeEndpoint}/${tmdbId}?api_key=${TMDB_API_KEY}&language=pt-BR`;
-    
-    detailsContent.innerHTML = '<p>Carregando detalhes...</p>';
-    detailsModal.style.display = 'block';
-
-    try {
-        const response = await fetch(url);
-        const data = await response.json();
-
-        const title = data.title || data.name;
-        const sinopse = data.overview || 'Sinopse não disponível em Português.';
-        const posterPath = data.poster_path;
-        const backdropPath = data.backdrop_path; // Novo: Captura o backdrop
-        
-        const posterUrl = posterPath ? `${TMDB_POSTER_BASE_URL}${posterPath}` : '';
-        const backdropUrl = backdropPath ? `${TMDB_IMAGE_BASE_URL}${backdropPath}` : '';
-        
-        const year = (data.release_date || data.first_air_date || '').substring(0, 4);
-        const seasonsCount = data.number_of_seasons ? `${data.number_of_seasons} Temporada${data.number_of_seasons > 1 ? 's' : ''}` : null;
-        const runtime = data.runtime ? `${data.runtime} min` : null;
-        
-        const imdbScore = data.vote_average ? data.vote_average.toFixed(1) : 'N/A';
-        const displayType = mediaType === 'movie' ? 'Filme' : 'Série';
-        
-        // Favoritos
-        const isFav = isFavorite(tmdbId, mediaType);
-        const favIcon = isFav ? '&#9829;' : '&#9825;';
-        const favClass = isFav ? 'is-favorite' : '';
-
-
-        // Atualiza o fundo do modal para o efeito backdrop
-        const modalContent = detailsModal.querySelector('.modal-content');
-        if (backdropUrl) {
-            modalContent.style.backgroundImage = `url(${backdropUrl})`;
-            modalContent.classList.add('has-backdrop');
-        } else {
-            modalContent.style.backgroundImage = 'none';
-            modalContent.classList.remove('has-backdrop');
-        }
-
-        // Metadados formatados
-        const metadataHtml = [];
-        if (seasonsCount) metadataHtml.push(`<span class="metadata-item">${seasonsCount}</span>`);
-        if (runtime) metadataHtml.push(`<span class="metadata-item">${runtime}</span>`);
-        if (year) metadataHtml.push(`<span class="metadata-item">${year}</span>`);
-        if (imdbScore !== 'N/A') metadataHtml.push(`<span class="metadata-item imdb-score">IMDb ${imdbScore}</span>`);
-
-
-        detailsContent.innerHTML = `
-            <div class="modal-info-container">
-                <img src="${posterUrl}" alt="Pôster de ${title}" class="modal-poster">
-                <div class="modal-text-content">
-                    
-                    <h3>${title}</h3>
-                    
-                    <p class="modal-metadata">
-                        ${metadataHtml.join('\n')}
-                    </p>
-                    
-                    <p class="modal-sinopse">${sinopse}</p>
-
-                    <div class="modal-actions">
-                        <button class="watch-button action-button primary-button" 
-                                data-id="${tmdbId}" data-type="${mediaType}" data-title="${title}">
-                            ▶︎ Assistir
-                        </button>
-                        <button class="action-button icon-button modal-favorite-button"
-                                data-id="${tmdbId}" data-type="${mediaType}">
-                            <span class="icon-save ${favClass}">${favIcon}</span>
-                        </button>
-                    </div>
-
-                </div>
-            </div>
-            
-            <div style="clear: both;"></div>
-        `;
-        
-        // Reconecta o listener para o botão Assistir no modal
-        detailsContent.querySelector('.watch-button').addEventListener('click', (e) => {
-            const id = e.target.dataset.id;
-            const type = e.target.dataset.type;
-            const title = e.target.dataset.title;
-            // Fecha o modal e inicia o player
-            detailsModal.style.display = 'none';
-            handleWatchClick(id, type, title);
-        });
-        
-        // Anexa o listener para o botão Favoritar no Modal
-        detailsContent.querySelector('.modal-favorite-button').addEventListener('click', (e) => {
-            const id = e.currentTarget.dataset.id;
-            const type = e.currentTarget.dataset.type;
-            toggleFavorite(id, type);
-            // O toggleFavorite já chama updateFavoriteButtonState, que atualiza o ícone
-        });
-
-
-    } catch (error) {
-        console.error('Erro ao carregar detalhes:', error);
-        detailsContent.innerHTML = `<p>Erro ao carregar detalhes: ${error.message}</p>`;
-        detailsModal.querySelector('.modal-content').classList.remove('has-backdrop');
-        detailsModal.querySelector('.modal-content').style.backgroundImage = 'none';
-    }
-}
-
-
-/**
- * Função para buscar e mesclar os dados de IPTV-ORG.
- */
-async function fetchAndCombineIPTVData() {
-    try {
-        // Busca os 3 arquivos essenciais: canais, streams E logos.
-        const [channelsResponse, streamsResponse, logosResponse] = await Promise.all([
-            fetch(`${IPTV_ORG_API_BASE}/channels.json`),
-            fetch(`${IPTV_ORG_API_BASE}/streams.json`),
-            fetch(`${IPTV_ORG_API_BASE}/logos.json`) 
-        ]);
-
-        if (!channelsResponse.ok || !streamsResponse.ok || !logosResponse.ok) {
-            throw new Error("Falha ao carregar um ou mais arquivos IPTV-ORG.");
-        }
-
-        const channelsData = await channelsResponse.json();
-        const streamsData = await streamsResponse.json();
-        const logosData = await logosResponse.json(); 
-        
-        // Mapeia canais e logos por ID para acesso rápido
-        const channelMap = new Map(channelsData.map(c => [c.id, c]));
-        // Mapeia logos pela ID do canal. Muitos canais têm várias logos; pegamos a primeira.
-        const logoMap = new Map();
-        logosData.forEach(logo => {
-            if (logo.channel && !logoMap.has(logo.channel)) {
-                logoMap.set(logo.channel, logo.url);
-            }
-        });
-
-
-        const combinedList = streamsData
-            // Filtra streams M3U8 válidos
-            .filter(stream => stream.url && stream.url.endsWith('.m3u8')) 
-            .map(stream => {
-                const channel = channelMap.get(stream.channel);
-                
-                if (!channel) return null; 
-
-                // Obtém a URL da logo diretamente do mapeamento de logos
-                const logoUrl = logoMap.get(channel.id);
-
-                return {
-                    id: stream.channel,
-                    name: channel.name,
-                    category: channel.categories.join(', ') || 'Geral',
-                    streamUrl: stream.url, 
-                    // Usa a URL garantida pelo logos.json
-                    logoUrl: logoUrl || 'placeholder_logo.png' 
-                };
-            })
-            .filter(item => item !== null)
-            // Remove duplicados
-            .filter((value, index, self) => 
-                index === self.findIndex((t) => (
-                    t.id === value.id
-                ))
-            ); 
-
-        return combinedList;
-
-    } catch (error) {
-        console.error('Erro CRÍTICO ao buscar e combinar dados do IPTV-ORG:', error);
-        return []; 
-    }
-}
-
-
-/**
- * Carrega a lista de canais usando a nova fonte IPTV-ORG (TODOS OS PAÍSES).
- */
-async function loadLiveTV() {
-    resetView('results-container'); 
-    resultsContainer.innerHTML = '<h2>TV ao Vivo</h2><p>Buscando lista de canais (IPTV-ORG)...</p>';
-
-    currentCategory.endpoint = 'live_tv'; 
-    currentCategory.title = 'TV ao Vivo';
-    
-    // Carrega os dados APENAS se ainda não estiverem na memória
-    if (iptvChannels.length === 0) {
-        iptvChannels = await fetchAndCombineIPTVData();
-    }
-
-    const channels = iptvChannels;
-
-    if (channels.length === 0) {
-        resultsContainer.innerHTML = `
-            <h2>TV ao Vivo</h2>
-            <p style="color: red;">Erro: Não foi possível carregar a lista de canais ativos do IPTV-ORG. Tente novamente mais tarde.</p>
-        `;
-        return;
-    }
-
-    // Renderiza a grade de canais com o novo título
-    resultsContainer.innerHTML = `<section class="catalog-section">
-        <h2>Todos os Canais Ativos (${channels.length} itens)</h2>
-        <div id="channels-grid" class="results-grid"></div>
-    </section>`;
-    
-    const channelsGrid = document.getElementById('channels-grid');
-
-    channels.forEach(channel => {
-        const card = document.createElement('div');
-        // Adiciona a classe channel-card
-        card.className = 'movie-card channel-card';
-        
-        const logoSrc = channel.logoUrl || 'placeholder_logo.png'; 
-        const channelId = channel.id; 
-        const channelName = channel.name || 'Canal Desconhecido';
-        const channelCategory = channel.category; 
-
-        // Cards de TV Ao Vivo usam o card-info original (sem a lógica de hover)
-        card.innerHTML = `
-            <img src="${logoSrc}" 
-                 alt="${channelName}" 
-                 class="channel-logo" 
-                 loading="lazy"
-                 onerror="this.onerror=null; this.src='https://via.placeholder.com/200x200?text=Logo+N%C3%A3o+Encontrada'"> 
-            <div class="card-info">
-                <h3>${channelName}</h3> 
-                <p style="font-size: 0.9em; color: #ccc;">${channelCategory}</p>
-                <button class="watch-channel-button action-button primary-button" 
-                            data-channel-id="${channelId}" data-title="${channelName}" 
-                            style="width: 90%; margin-top: 10px;">
-                    ASSISTIR AO VIVO
-                </button>
-            </div>
-        `;
-        channelsGrid.appendChild(card);
-    });
-    
-    attachChannelListeners();
-}
-
-/**
- * Anexa listeners para os botões de ASSISTIR AO VIVO.
- */
-function attachChannelListeners() {
-    document.querySelectorAll('.watch-channel-button').forEach(button => {
-        button.onclick = null; 
-        button.onclick = (event) => {
-            const channelId = event.target.dataset.channelId;
-            const title = event.target.dataset.title;
-            
-            playLiveChannel(channelId, title); 
-        };
-    });
-}
-
-/**
- * Carrega o canal de TV no player (USANDO SOMENTE HLS.JS).
- */
-async function playLiveChannel(channelId, title) {
-    resetView('player-container');
-    playerTitle.textContent = title;
-    
-    const playerOptionsDiv = playerContainer.querySelector('.player-options');
-    if(playerOptionsDiv) {
-        playerOptionsDiv.style.display = 'none'; 
-    }
-    seriesSelectors.style.display = 'none'; 
-
-    videoPlayerDiv.innerHTML = `<p>Buscando URL do stream para ${title}...</p>`;
-
-    // Busca a URL M3U8 nos dados pré-carregados
-    const channel = iptvChannels.find(c => c.id === channelId);
-    const streamUrl = channel ? channel.streamUrl : null;
-
-    if (!streamUrl) {
-        videoPlayerDiv.innerHTML = `
-            <div style="padding: 30px; background-color: #2a2a2a; border-radius: 8px; max-width: 500px; margin: 50px auto; text-align: center; border: 1px solid red;">
-                <p style="color: red; font-size: 1.1em; margin-bottom: 15px;">
-                    ❌ Stream Indisponível
-                </p>
-                <p style="color: #ccc; font-size: 0.9em; margin-bottom: 20px;">
-                    Não foi possível encontrar a URL de stream M3U8 para **${title}** na base de dados IPTV-ORG.
-                </p>
-                <button onclick="loadLiveTV()" class="action-button primary-button" style="background-color: #555;">
-                    Voltar para a lista
-                </button>
-            </div>
-        `;
-        return;
-    }
-
-    // Tenta reproduzir o M3U8 via HLS.js
-    const video = document.createElement('video');
-    video.id = 'live-video-player';
-    video.controls = true;
-    video.autoplay = true; 
-    video.style.width = '100%';
-    video.style.height = '100%';
-    
-    videoPlayerDiv.innerHTML = '';
-    videoPlayerDiv.appendChild(video);
-    
-    if (typeof Hls !== 'undefined' && Hls.isSupported()) {
-        const hls = new Hls();
-        hls.loadSource(streamUrl);
-        hls.attachMedia(video);
-        hls.on(Hls.Events.MANIFEST_PARSED, function() {
-            video.play().catch(error => {
-                console.warn('Autoplay bloqueado pelo navegador.', error);
-                videoPlayerDiv.insertAdjacentHTML('beforeend', `
-                    <div class="stream-info-overlay" style="margin-top: 20px;">
-                        <p style="color: #ffcc00; font-weight: bold; margin-bottom: 5px;">
-                            ⚠️ CLIQUE NECESSÁRIO
-                        </p>
-                        <p style="color: #ccc; font-size: 0.9em; margin-bottom: 0;">
-                            O navegador bloqueou a reprodução automática. Clique no botão de Play no vídeo.
-                        </p>
-                    </div>
-                `);
-            });
-        });
-    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-        video.src = streamUrl;
-        video.addEventListener('loadedmetadata', function() {
-            video.play();
-        });
-    } else {
-         videoPlayerDiv.innerHTML = `<p style="color: red; margin-top: 50px;">
-            Seu navegador não suporta o formato de stream (M3U8).
-        </p>`;
-    }
-}
-
-
-/**
- * Carrega e exibe a lista de favoritos.
- */
-async function loadFavoritesCatalog() {
-    resetView('results-container');
-    resultsContainer.innerHTML = '<h2>Favoritos</h2><p>Carregando seus filmes e séries favoritos...</p>';
-    currentCategory.endpoint = 'favorites';
-    currentCategory.title = 'Favoritos';
-
-    const favoriteItems = loadFavoritesFromLocalStorage();
-
-    if (favoriteItems.length === 0) {
-        resultsContainer.innerHTML = `
-            <section class="catalog-section">
-                <h2>Seus Favoritos</h2>
-                <p class="empty-list-message">
-                    Você ainda não adicionou nenhum filme ou série aos seus favoritos.
-                    Adicione um item clicando no ícone <span style="color: #e50914;">&#9825;</span> no card!
-                </p>
-            </section>
-        `;
-        return;
-    }
-
-    // 1. Coleta IDs de filmes e séries
-    const tmdbIdsToFetch = favoriteItems.map(item => {
-        const [type, id] = item.split('-');
-        return { type: type, id: id };
-    });
-
-    // 2. Cria as promessas de busca no TMDB
-    const fetchPromises = tmdbIdsToFetch.map(({ id, type }) => {
-        const url = `${TMDB_BASE_URL}/${type}/${id}?api_key=${TMDB_API_KEY}&language=pt-BR`;
-        return fetch(url)
-            .then(res => res.json())
-            .catch(err => {
-                console.error(`Erro ao buscar ${type} ID ${id}:`, err);
-                return null;
-            });
-    });
-
-    const rawResults = await Promise.all(fetchPromises);
-    
-    // 3. Filtra resultados válidos e renderiza
-    const validResults = rawResults.filter(item => item && item.id);
-    
-    resultsContainer.innerHTML = `<section class="catalog-section">
-        <h2>Seus Favoritos (${validResults.length} itens)</h2>
-        <div id="favorites-grid" class="results-grid"></div>
-    </section>`;
-    
-    const favoritesGridContainer = document.getElementById('favorites-grid');
-
-    // Mapeia os resultados para o formato esperado pelo displayResults
-    const normalizedResults = validResults.map(item => ({
-        ...item,
-        media_type: item.title ? 'movie' : 'tv', // Tenta inferir o tipo
-    }));
-    
-    // Passa a lista normalizada para a função que renderiza os cards
-    displayResults(normalizedResults, favoritesGridContainer);
-}
-
-/**
- * Função de busca manual (quando o usuário digita na busca).
- */
-async function searchMedia(query) {
-    if (!query) return; 
-
-    resetView('results-container');
-    resultsContainer.innerHTML = `<p>Buscando resultados para "${query}"...</p>`;
-    currentCategory.endpoint = null; 
-
-    const url = `${TMDB_BASE_URL}/search/multi?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(query)}&language=pt-BR`;
-
-    try {
-        const response = await fetch(url);
-        if (!response.ok) {
-            throw new Error('Erro ao buscar dados do TMDB. Verifique a chave da API.');
-        }
-        const data = await response.json();
-        
-        resultsContainer.innerHTML = `<section class="catalog-section"><h2>Resultados da Busca</h2><div id="search-results" class="results-grid"></div></section>`;
-        const searchResultsContainer = document.getElementById('search-results');
-
-        displayResults(data.results, searchResultsContainer);
-
-    } catch (error) {
-        console.error('Erro na busca:', error);
-        resultsContainer.innerHTML = `<p>Erro: ${error.message}</p>`;
-    }
-}
-
-
-// --- 3. FUNÇÕES DE PLAYER E MODAL ---
-
-async function loadSeriesOptions(tmdbId) {
-    const url = `${TMDB_BASE_URL}/tv/${tmdbId}?api_key=${TMDB_API_KEY}&language=pt-BR`;
-    
-    try {
-        const response = await fetch(url);
-        const data = await response.json();
-
-        const validSeasons = data.seasons.filter(s => s.season_number > 0 && s.episode_count > 0);
-        
-        currentMedia.seasons = validSeasons;
-        
-        seasonSelect.innerHTML = '';
-        validSeasons.forEach(season => {
-            const option = document.createElement('option');
-            option.value = season.season_number;
-            option.textContent = `T${season.season_number}`;
-            seasonSelect.appendChild(option);
-        });
-
-        currentMedia.currentSeason = validSeasons.length > 0 ? validSeasons[0].season_number : 1;
-        updateEpisodeOptions(currentMedia.currentSeason);
-
-    } catch (error) {
-        console.error('Erro ao carregar opções de séries:', error);
-        seriesSelectors.innerHTML = `<p>Erro: Falha ao carregar temporadas.</p>`;
-    }
-}
-
-function updateEpisodeOptions(seasonNumber) {
-    const season = currentMedia.seasons.find(s => s.season_number == seasonNumber);
-    episodeSelect.innerHTML = ''; 
-    if (season && season.episode_count > 0) {
-        for (let i = 1; i <= season.episode_count; i++) {
-            const option = document.createElement('option');
-            option.value = i;
-            option.textContent = `E${i}`;
-            episodeSelect.appendChild(option);
-        }
-        currentMedia.currentEpisode = 1; 
-    } else {
-        currentMedia.currentEpisode = null;
-    }
-}
-
-async function handleWatchClick(tmdbId, mediaType, mediaTitle) {
-    const mediaId = parseInt(tmdbId);
-    if (isNaN(mediaId)) {
-        console.error("ID de mídia inválido recebido:", tmdbId);
-        return; 
-    }
-
-    Object.assign(currentMedia, {
-        tmdbId: mediaId, mediaType, title: mediaTitle, imdbId: null, seasons: [], currentSeason: 1, currentEpisode: 1
-    });
-
-    resetView('player-container'); 
-    playerTitle.textContent = mediaTitle;
-    
-    const playerOptionsDiv = playerContainer.querySelector('.player-options');
-    if(playerOptionsDiv) {
-        playerOptionsDiv.style.display = 'flex'; 
-    }
-    
-    seriesSelectors.style.display = 'none'; 
-
-    await getImdbId(mediaId, mediaType);
-    
-    if (mediaType === 'tv') {
-        seriesSelectors.style.display = 'block';
-        await loadSeriesOptions(mediaId);
-    }
-    
-    createPlayer(); 
-}
-
-function createPlayer() {
-    const source = playerSourceSelect.value;
-    const { tmdbId, mediaType, imdbId, currentSeason, currentEpisode } = currentMedia;
-
-    videoPlayerDiv.innerHTML = ''; 
-    let embedUrl = '';
-    const typeParam = mediaType === 'movie' ? 'movie' : 'tv';
-    
-    if (source === 'megaembed.com') {
-        if (mediaType === 'movie') {
-            embedUrl = `https://megaembed.com/embed/${tmdbId}`;
-        } else {
-            embedUrl = `https://megaembed.com/embed/${tmdbId}/${currentSeason}/${currentEpisode}`;
-        }
-    } else if (source === 'vidsrc-embed.ru') {
-        const langParam = '&ds_lang=pt'; 
-        if (mediaType === 'movie') {
-            embedUrl = `https://vidsrc-embed.ru/embed/${typeParam}?tmdb=${tmdbId}${langParam}`;
-        } else {
-            embedUrl = `https://vidsrc-embed.ru/embed/${typeParam}?tmdb=${tmdbId}&season=${currentSeason}&episode=${currentEpisode}${langParam}`;
-        }
-    } else if (source === '2embed.top') {
-        if (mediaType === 'movie') {
-            embedUrl = `https://2embed.top/embed/movie/${tmdbId}`;
-        } else {
-            embedUrl = `https://2embed.top/embed/tv/${tmdbId}/${currentSeason}/${currentEpisode}`;
-        }
-    } else if (source === 'vidsrc.cc') {
-        const version = 'v2';
-        if (mediaType === 'movie') {
-            embedUrl = `https://vidsrc.cc/${version}/embed/movie/${tmdbId}`;
-        } else {
-            embedUrl = `https://vidsrc.cc/${version}/embed/tv/${tmdbId}/${currentSeason}/${currentEpisode}`;
-        }
-    } else if (source === 'playerflixapi.com') {
-        if (mediaType === 'movie') {
-            if (!imdbId) {
-                videoPlayerDiv.innerHTML = `<p>A fonte **playerflixapi.com** exige o ID do IMDB para filmes. Tente outra fonte.</p>`;
-                return;
-            }
-            embedUrl = `https://playerflixapi.com/filme/${imdbId}`;
-        } else {
-            embedUrl = `https://playerflixapi.com/serie/${tmdbId}/${currentSeason}/${currentEpisode}`;
-        }
-    } else if (source === 'vidsrc.to') {
-        if (!imdbId) {
-            videoPlayerDiv.innerHTML = `<p>A fonte **vidsrc.to** exige o ID do IMDB para filmes. Tente outra fonte.</p>`;
-            return;
-        }
-        if (mediaType === 'movie') {
-            embedUrl = `https://vidsrc.to/embed/movie/${imdbId}`;
-        } else {
-             videoPlayerDiv.innerHTML = `<p>A fonte **vidsrc.to** não suporta seleção direta de episódio. Tente outra opção.</p>`;
-             return;
-        }
-    } else {
-        videoPlayerDiv.innerHTML = `<p>Fonte de player desconhecida.</p>`;
-        return;
-    }
-
-    const iframe = document.createElement('iframe');
-    iframe.src = embedUrl;
-    iframe.allowFullscreen = true; 
-    iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture';
-    iframe.style.width = '100%';
-    iframe.style.height = '100%';
-    
-    videoPlayerDiv.appendChild(iframe);
-}
-
-async function showDetailsModal(tmdbId, mediaType) {
-    const typeEndpoint = mediaType === 'movie' ? 'movie' : 'tv';
-    // Buscamos o backdrop_path no mesmo endpoint
-    const url = `${TMDB_BASE_URL}/${typeEndpoint}/${tmdbId}?api_key=${TMDB_API_KEY}&language=pt-BR`;
-    
-    detailsContent.innerHTML = '<p>Carregando detalhes...</p>';
-    detailsModal.style.display = 'block';
-
-    try {
-        const response = await fetch(url);
-        const data = await response.json();
-
-        const title = data.title || data.name;
-        const sinopse = data.overview || 'Sinopse não disponível em Português.';
-        const posterPath = data.poster_path;
-        const backdropPath = data.backdrop_path; // Novo: Captura o backdrop
-        
-        const posterUrl = posterPath ? `${TMDB_POSTER_BASE_URL}${posterPath}` : '';
-        const backdropUrl = backdropPath ? `${TMDB_IMAGE_BASE_URL}${backdropPath}` : '';
-        
-        const year = (data.release_date || data.first_air_date || '').substring(0, 4);
-        const seasonsCount = data.number_of_seasons ? `${data.number_of_seasons} Temporada${data.number_of_seasons > 1 ? 's' : ''}` : null;
-        const runtime = data.runtime ? `${data.runtime} min` : null;
-        
-        const imdbScore = data.vote_average ? data.vote_average.toFixed(1) : 'N/A';
-        const displayType = mediaType === 'movie' ? 'Filme' : 'Série';
-        
-        // Favoritos
-        const isFav = isFavorite(tmdbId, mediaType);
-        const favIcon = isFav ? '&#9829;' : '&#9825;';
-        const favClass = isFav ? 'is-favorite' : '';
-
-
-        // Atualiza o fundo do modal para o efeito backdrop
-        const modalContent = detailsModal.querySelector('.modal-content');
-        if (backdropUrl) {
-            modalContent.style.backgroundImage = `url(${backdropUrl})`;
-            modalContent.classList.add('has-backdrop');
-        } else {
-            modalContent.style.backgroundImage = 'none';
-            modalContent.classList.remove('has-backdrop');
-        }
-
-        // Metadados formatados
-        const metadataHtml = [];
-        if (seasonsCount) metadataHtml.push(`<span class="metadata-item">${seasonsCount}</span>`);
-        if (runtime) metadataHtml.push(`<span class="metadata-item">${runtime}</span>`);
-        if (year) metadataHtml.push(`<span class="metadata-item">${year}</span>`);
-        if (imdbScore !== 'N/A') metadataHtml.push(`<span class="metadata-item imdb-score">IMDb ${imdbScore}</span>`);
-
-
-        detailsContent.innerHTML = `
-            <div class="modal-info-container">
-                <img src="${posterUrl}" alt="Pôster de ${title}" class="modal-poster">
-                <div class="modal-text-content">
-                    
-                    <h3>${title}</h3>
-                    
-                    <p class="modal-metadata">
-                        ${metadataHtml.join('\n')}
-                    </p>
-                    
-                    <p class="modal-sinopse">${sinopse}</p>
-
-                    <div class="modal-actions">
-                        <button class="watch-button action-button primary-button" 
-                                data-id="${tmdbId}" data-type="${mediaType}" data-title="${title}">
-                            ▶︎ Assistir
-                        </button>
-                        <button class="action-button icon-button modal-favorite-button"
-                                data-id="${tmdbId}" data-type="${mediaType}">
-                            <span class="icon-save ${favClass}">${favIcon}</span>
-                        </button>
-                    </div>
-
-                </div>
-            </div>
-            
-            <div style="clear: both;"></div>
-        `;
-        
-        // Reconecta o listener para o botão Assistir no modal
-        detailsContent.querySelector('.watch-button').addEventListener('click', (e) => {
-            const id = e.target.dataset.id;
-            const type = e.target.dataset.type;
-            const title = e.target.dataset.title;
-            // Fecha o modal e inicia o player
-            detailsModal.style.display = 'none';
-            handleWatchClick(id, type, title);
-        });
-        
-        // Anexa o listener para o botão Favoritar no Modal
-        detailsContent.querySelector('.modal-favorite-button').addEventListener('click', (e) => {
-            const id = e.currentTarget.dataset.id;
-            const type = e.currentTarget.dataset.type;
-            toggleFavorite(id, type);
-            // O toggleFavorite já chama updateFavoriteButtonState, que atualiza o ícone
-        });
-
-
-    } catch (error) {
-        console.error('Erro ao carregar detalhes:', error);
-        detailsContent.innerHTML = `<p>Erro ao carregar detalhes: ${error.message}</p>`;
-        detailsModal.querySelector('.modal-content').classList.remove('has-backdrop');
-        detailsModal.querySelector('.modal-content').style.backgroundImage = 'none';
-    }
-}
-
-
-/**
- * Função para buscar e mesclar os dados de IPTV-ORG.
- */
-async function fetchAndCombineIPTVData() {
-    try {
-        // Busca os 3 arquivos essenciais: canais, streams E logos.
-        const [channelsResponse, streamsResponse, logosResponse] = await Promise.all([
-            fetch(`${IPTV_ORG_API_BASE}/channels.json`),
-            fetch(`${IPTV_ORG_API_BASE}/streams.json`),
-            fetch(`${IPTV_ORG_API_BASE}/logos.json`) 
-        ]);
-
-        if (!channelsResponse.ok || !streamsResponse.ok || !logosResponse.ok) {
-            throw new Error("Falha ao carregar um ou mais arquivos IPTV-ORG.");
-        }
-
-        const channelsData = await channelsResponse.json();
-        const streamsData = await streamsResponse.json();
-        const logosData = await logosResponse.json(); 
-        
-        // Mapeia canais e logos por ID para acesso rápido
-        const channelMap = new Map(channelsData.map(c => [c.id, c]));
-        // Mapeia logos pela ID do canal. Muitos canais têm várias logos; pegamos a primeira.
-        const logoMap = new Map();
-        logosData.forEach(logo => {
-            if (logo.channel && !logoMap.has(logo.channel)) {
-                logoMap.set(logo.channel, logo.url);
-            }
-        });
-
-
-        const combinedList = streamsData
-            // Filtra streams M3U8 válidos
-            .filter(stream => stream.url && stream.url.endsWith('.m3u8')) 
-            .map(stream => {
-                const channel = channelMap.get(stream.channel);
-                
-                if (!channel) return null; 
-
-                // Obtém a URL da logo diretamente do mapeamento de logos
-                const logoUrl = logoMap.get(channel.id);
-
-                return {
-                    id: stream.channel,
-                    name: channel.name,
-                    category: channel.categories.join(', ') || 'Geral',
-                    streamUrl: stream.url, 
-                    // Usa a URL garantida pelo logos.json
-                    logoUrl: logoUrl || 'placeholder_logo.png' 
-                };
-            })
-            .filter(item => item !== null)
-            // Remove duplicados
-            .filter((value, index, self) => 
-                index === self.findIndex((t) => (
-                    t.id === value.id
-                ))
-            ); 
-
-        return combinedList;
-
-    } catch (error) {
-        console.error('Erro CRÍTICO ao buscar e combinar dados do IPTV-ORG:', error);
-        return []; 
-    }
-}
-
-
-/**
- * Carrega a lista de canais usando a nova fonte IPTV-ORG (TODOS OS PAÍSES).
- */
-async function loadLiveTV() {
-    resetView('results-container'); 
-    resultsContainer.innerHTML = '<h2>TV ao Vivo</h2><p>Buscando lista de canais (IPTV-ORG)...</p>';
-
-    currentCategory.endpoint = 'live_tv'; 
-    currentCategory.title = 'TV ao Vivo';
-    
-    // Carrega os dados APENAS se ainda não estiverem na memória
-    if (iptvChannels.length === 0) {
-        iptvChannels = await fetchAndCombineIPTVData();
-    }
-
-    const channels = iptvChannels;
-
-    if (channels.length === 0) {
-        resultsContainer.innerHTML = `
-            <h2>TV ao Vivo</h2>
-            <p style="color: red;">Erro: Não foi possível carregar a lista de canais ativos do IPTV-ORG. Tente novamente mais tarde.</p>
-        `;
-        return;
-    }
-
-    // Renderiza a grade de canais com o novo título
-    resultsContainer.innerHTML = `<section class="catalog-section">
-        <h2>Todos os Canais Ativos (${channels.length} itens)</h2>
-        <div id="channels-grid" class="results-grid"></div>
-    </section>`;
-    
-    const channelsGrid = document.getElementById('channels-grid');
-
-    channels.forEach(channel => {
-        const card = document.createElement('div');
-        // Adiciona a classe channel-card
-        card.className = 'movie-card channel-card';
-        
-        const logoSrc = channel.logoUrl || 'placeholder_logo.png'; 
-        const channelId = channel.id; 
-        const channelName = channel.name || 'Canal Desconhecido';
-        const channelCategory = channel.category; 
-
-        // Cards de TV Ao Vivo usam o card-info original (sem a lógica de hover)
-        card.innerHTML = `
-            <img src="${logoSrc}" 
-                 alt="${channelName}" 
-                 class="channel-logo" 
-                 loading="lazy"
-                 onerror="this.onerror=null; this.src='https://via.placeholder.com/200x200?text=Logo+N%C3%A3o+Encontrada'"> 
-            <div class="card-info">
-                <h3>${channelName}</h3> 
-                <p style="font-size: 0.9em; color: #ccc;">${channelCategory}</p>
-                <button class="watch-channel-button action-button primary-button" 
-                            data-channel-id="${channelId}" data-title="${channelName}" 
-                            style="width: 90%; margin-top: 10px;">
-                    ASSISTIR AO VIVO
-                </button>
-            </div>
-        `;
-        channelsGrid.appendChild(card);
-    });
-    
-    attachChannelListeners();
-}
-
-/**
- * Anexa listeners para os botões de ASSISTIR AO VIVO.
- */
-function attachChannelListeners() {
-    document.querySelectorAll('.watch-channel-button').forEach(button => {
-        button.onclick = null; 
-        button.onclick = (event) => {
-            const channelId = event.target.dataset.channelId;
-            const title = event.target.dataset.title;
-            
-            playLiveChannel(channelId, title); 
-        };
-    });
-}
-
-/**
- * Carrega o canal de TV no player (USANDO SOMENTE HLS.JS).
- */
-async function playLiveChannel(channelId, title) {
-    resetView('player-container');
-    playerTitle.textContent = title;
-    
-    const playerOptionsDiv = playerContainer.querySelector('.player-options');
-    if(playerOptionsDiv) {
-        playerOptionsDiv.style.display = 'none'; 
-    }
-    seriesSelectors.style.display = 'none'; 
-
-    videoPlayerDiv.innerHTML = `<p>Buscando URL do stream para ${title}...</p>`;
-
-    // Busca a URL M3U8 nos dados pré-carregados
-    const channel = iptvChannels.find(c => c.id === channelId);
-    const streamUrl = channel ? channel.streamUrl : null;
-
-    if (!streamUrl) {
-        videoPlayerDiv.innerHTML = `
-            <div style="padding: 30px; background-color: #2a2a2a; border-radius: 8px; max-width: 500px; margin: 50px auto; text-align: center; border: 1px solid red;">
-                <p style="color: red; font-size: 1.1em; margin-bottom: 15px;">
-                    ❌ Stream Indisponível
-                </p>
-                <p style="color: #ccc; font-size: 0.9em; margin-bottom: 20px;">
-                    Não foi possível encontrar a URL de stream M3U8 para **${title}** na base de dados IPTV-ORG.
-                </p>
-                <button onclick="loadLiveTV()" class="action-button primary-button" style="background-color: #555;">
-                    Voltar para a lista
-                </button>
-            </div>
-        `;
-        return;
-    }
-
-    // Tenta reproduzir o M3U8 via HLS.js
-    const video = document.createElement('video');
-    video.id = 'live-video-player';
-    video.controls = true;
-    video.autoplay = true; 
-    video.style.width = '100%';
-    video.style.height = '100%';
-    
-    videoPlayerDiv.innerHTML = '';
-    videoPlayerDiv.appendChild(video);
-    
-    if (typeof Hls !== 'undefined' && Hls.isSupported()) {
-        const hls = new Hls();
-        hls.loadSource(streamUrl);
-        hls.attachMedia(video);
-        hls.on(Hls.Events.MANIFEST_PARSED, function() {
-            video.play().catch(error => {
-                console.warn('Autoplay bloqueado pelo navegador.', error);
-                videoPlayerDiv.insertAdjacentHTML('beforeend', `
-                    <div class="stream-info-overlay" style="margin-top: 20px;">
-                        <p style="color: #ffcc00; font-weight: bold; margin-bottom: 5px;">
-                            ⚠️ CLIQUE NECESSÁRIO
-                        </p>
-                        <p style="color: #ccc; font-size: 0.9em; margin-bottom: 0;">
-                            O navegador bloqueou a reprodução automática. Clique no botão de Play no vídeo.
-                        </p>
-                    </div>
-                `);
-            });
-        });
-    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-        video.src = streamUrl;
-        video.addEventListener('loadedmetadata', function() {
-            video.play();
-        });
-    } else {
-         videoPlayerDiv.innerHTML = `<p style="color: red; margin-top: 50px;">
-            Seu navegador não suporta o formato de stream (M3U8).
-        </p>`;
-    }
-}
-
-
-/**
- * Função de busca manual (quando o usuário digita na busca).
- */
-async function searchMedia(query) {
-    if (!query) return; 
-
-    resetView('results-container');
-    resultsContainer.innerHTML = `<p>Buscando resultados para "${query}"...</p>`;
-    currentCategory.endpoint = null; 
-
-    const url = `${TMDB_BASE_URL}/search/multi?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(query)}&language=pt-BR`;
-
-    try {
-        const response = await fetch(url);
-        if (!response.ok) {
-            throw new Error('Erro ao buscar dados do TMDB. Verifique a chave da API.');
-        }
-        const data = await response.json();
-        
-        resultsContainer.innerHTML = `<section class="catalog-section"><h2>Resultados da Busca</h2><div id="search-results" class="results-grid"></div></section>`;
-        const searchResultsContainer = document.getElementById('search-results');
-
-        displayResults(data.results, searchResultsContainer);
-
-    } catch (error) {
-        console.error('Erro na busca:', error);
-        resultsContainer.innerHTML = `<p>Erro: ${error.message}</p>`;
-    }
-}
-
-
-// --- 3. FUNÇÕES DE PLAYER E MODAL ---
-
-async function loadSeriesOptions(tmdbId) {
-    const url = `${TMDB_BASE_URL}/tv/${tmdbId}?api_key=${TMDB_API_KEY}&language=pt-BR`;
-    
-    try {
-        const response = await fetch(url);
-        const data = await response.json();
-
-        const validSeasons = data.seasons.filter(s => s.season_number > 0 && s.episode_count > 0);
-        
-        currentMedia.seasons = validSeasons;
-        
-        seasonSelect.innerHTML = '';
-        validSeasons.forEach(season => {
-            const option = document.createElement('option');
-            option.value = season.season_number;
-            option.textContent = `T${season.season_number}`;
-            seasonSelect.appendChild(option);
-        });
-
-        currentMedia.currentSeason = validSeasons.length > 0 ? validSeasons[0].season_number : 1;
-        updateEpisodeOptions(currentMedia.currentSeason);
-
-    } catch (error) {
-        console.error('Erro ao carregar opções de séries:', error);
-        seriesSelectors.innerHTML = `<p>Erro: Falha ao carregar temporadas.</p>`;
-    }
-}
-
-function updateEpisodeOptions(seasonNumber) {
-    const season = currentMedia.seasons.find(s => s.season_number == seasonNumber);
-    episodeSelect.innerHTML = ''; 
-    if (season && season.episode_count > 0) {
-        for (let i = 1; i <= season.episode_count; i++) {
-            const option = document.createElement('option');
-            option.value = i;
-            option.textContent = `E${i}`;
-            episodeSelect.appendChild(option);
-        }
-        currentMedia.currentEpisode = 1; 
-    } else {
-        currentMedia.currentEpisode = null;
-    }
-}
-
-async function handleWatchClick(tmdbId, mediaType, mediaTitle) {
-    const mediaId = parseInt(tmdbId);
-    if (isNaN(mediaId)) {
-        console.error("ID de mídia inválido recebido:", tmdbId);
-        return; 
-    }
-
-    Object.assign(currentMedia, {
-        tmdbId: mediaId, mediaType, title: mediaTitle, imdbId: null, seasons: [], currentSeason: 1, currentEpisode: 1
-    });
-
-    resetView('player-container'); 
-    playerTitle.textContent = mediaTitle;
-    
-    const playerOptionsDiv = playerContainer.querySelector('.player-options');
-    if(playerOptionsDiv) {
-        playerOptionsDiv.style.display = 'flex'; 
-    }
-    
-    seriesSelectors.style.display = 'none'; 
-
-    await getImdbId(mediaId, mediaType);
-    
-    if (mediaType === 'tv') {
-        seriesSelectors.style.display = 'block';
-        await loadSeriesOptions(mediaId);
-    }
-    
-    createPlayer(); 
-}
-
-function createPlayer() {
-    const source = playerSourceSelect.value;
-    const { tmdbId, mediaType, imdbId, currentSeason, currentEpisode } = currentMedia;
-
-    videoPlayerDiv.innerHTML = ''; 
-    let embedUrl = '';
-    const typeParam = mediaType === 'movie' ? 'movie' : 'tv';
-    
-    if (source === 'megaembed.com') {
-        if (mediaType === 'movie') {
-            embedUrl = `https://megaembed.com/embed/${tmdbId}`;
-        } else {
-            embedUrl = `https://megaembed.com/embed/${tmdbId}/${currentSeason}/${currentEpisode}`;
-        }
-    } else if (source === 'vidsrc-embed.ru') {
-        const langParam = '&ds_lang=pt'; 
-        if (mediaType === 'movie') {
-            embedUrl = `https://vidsrc-embed.ru/embed/${typeParam}?tmdb=${tmdbId}${langParam}`;
-        } else {
-            embedUrl = `https://vidsrc-embed.ru/embed/${typeParam}?tmdb=${tmdbId}&season=${currentSeason}&episode=${currentEpisode}${langParam}`;
-        }
-    } else if (source === '2embed.top') {
-        if (mediaType === 'movie') {
-            embedUrl = `https://2embed.top/embed/movie/${tmdbId}`;
-        } else {
-            embedUrl = `https://2embed.top/embed/tv/${tmdbId}/${currentSeason}/${currentEpisode}`;
-        }
-    } else if (source === 'vidsrc.cc') {
-        const version = 'v2';
-        if (mediaType === 'movie') {
-            embedUrl = `https://vidsrc.cc/${version}/embed/movie/${tmdbId}`;
-        } else {
-            embedUrl = `https://vidsrc.cc/${version}/embed/tv/${tmdbId}/${currentSeason}/${currentEpisode}`;
-        }
-    } else if (source === 'playerflixapi.com') {
-        if (mediaType === 'movie') {
-            if (!imdbId) {
-                videoPlayerDiv.innerHTML = `<p>A fonte **playerflixapi.com** exige o ID do IMDB para filmes. Tente outra fonte.</p>`;
-                return;
-            }
-            embedUrl = `https://playerflixapi.com/filme/${imdbId}`;
-        } else {
-            embedUrl = `https://playerflixapi.com/serie/${tmdbId}/${currentSeason}/${currentEpisode}`;
-        }
-    } else if (source === 'vidsrc.to') {
-        if (!imdbId) {
-            videoPlayerDiv.innerHTML = `<p>A fonte **vidsrc.to** exige o ID do IMDB para filmes. Tente outra fonte.</p>`;
-            return;
-        }
-        if (mediaType === 'movie') {
-            embedUrl = `https://vidsrc.to/embed/movie/${imdbId}`;
-        } else {
-             videoPlayerDiv.innerHTML = `<p>A fonte **vidsrc.to** não suporta seleção direta de episódio. Tente outra opção.</p>`;
-             return;
-        }
-    } else {
-        videoPlayerDiv.innerHTML = `<p>Fonte de player desconhecida.</p>`;
-        return;
-    }
-
-    const iframe = document.createElement('iframe');
-    iframe.src = embedUrl;
-    iframe.allowFullscreen = true; 
-    iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture';
-    iframe.style.width = '100%';
-    iframe.style.height = '100%';
-    
-    videoPlayerDiv.appendChild(iframe);
-}
-
-async function showDetailsModal(tmdbId, mediaType) {
-    const typeEndpoint = mediaType === 'movie' ? 'movie' : 'tv';
-    // Buscamos o backdrop_path no mesmo endpoint
-    const url = `${TMDB_BASE_URL}/${typeEndpoint}/${tmdbId}?api_key=${TMDB_API_KEY}&language=pt-BR`;
-    
-    detailsContent.innerHTML = '<p>Carregando detalhes...</p>';
-    detailsModal.style.display = 'block';
-
-    try {
-        const response = await fetch(url);
-        const data = await response.json();
-
-        const title = data.title || data.name;
-        const sinopse = data.overview || 'Sinopse não disponível em Português.';
-        const posterPath = data.poster_path;
-        const backdropPath = data.backdrop_path; // Novo: Captura o backdrop
-        
-        const posterUrl = posterPath ? `${TMDB_POSTER_BASE_URL}${posterPath}` : '';
-        const backdropUrl = backdropPath ? `${TMDB_IMAGE_BASE_URL}${backdropPath}` : '';
-        
-        const year = (data.release_date || data.first_air_date || '').substring(0, 4);
-        const seasonsCount = data.number_of_seasons ? `${data.number_of_seasons} Temporada${data.number_of_seasons > 1 ? 's' : ''}` : null;
-        const runtime = data.runtime ? `${data.runtime} min` : null;
-        
-        const imdbScore = data.vote_average ? data.vote_average.toFixed(1) : 'N/A';
-        const displayType = mediaType === 'movie' ? 'Filme' : 'Série';
-        
-        // Favoritos
-        const isFav = isFavorite(tmdbId, mediaType);
-        const favIcon = isFav ? '&#9829;' : '&#9825;';
-        const favClass = isFav ? 'is-favorite' : '';
-
-
-        // Atualiza o fundo do modal para o efeito backdrop
-        const modalContent = detailsModal.querySelector('.modal-content');
-        if (backdropUrl) {
-            modalContent.style.backgroundImage = `url(${backdropUrl})`;
-            modalContent.classList.add('has-backdrop');
-        } else {
-            modalContent.style.backgroundImage = 'none';
-            modalContent.classList.remove('has-backdrop');
-        }
-
-        // Metadados formatados
-        const metadataHtml = [];
-        if (seasonsCount) metadataHtml.push(`<span class="metadata-item">${seasonsCount}</span>`);
-        if (runtime) metadataHtml.push(`<span class="metadata-item">${runtime}</span>`);
-        if (year) metadataHtml.push(`<span class="metadata-item">${year}</span>`);
-        if (imdbScore !== 'N/A') metadataHtml.push(`<span class="metadata-item imdb-score">IMDb ${imdbScore}</span>`);
-
-
-        detailsContent.innerHTML = `
-            <div class="modal-info-container">
-                <img src="${posterUrl}" alt="Pôster de ${title}" class="modal-poster">
-                <div class="modal-text-content">
-                    
-                    <h3>${title}</h3>
-                    
-                    <p class="modal-metadata">
-                        ${metadataHtml.join('\n')}
-                    </p>
-                    
-                    <p class="modal-sinopse">${sinopse}</p>
-
-                    <div class="modal-actions">
-                        <button class="watch-button action-button primary-button" 
-                                data-id="${tmdbId}" data-type="${mediaType}" data-title="${title}">
-                            ▶︎ Assistir
-                        </button>
-                        <button class="action-button icon-button modal-favorite-button"
-                                data-id="${tmdbId}" data-type="${mediaType}">
-                            <span class="icon-save ${favClass}">${favIcon}</span>
-                        </button>
-                    </div>
-
-                </div>
-            </div>
-            
-            <div style="clear: both;"></div>
-        `;
-        
-        // Reconecta o listener para o botão Assistir no modal
-        detailsContent.querySelector('.watch-button').addEventListener('click', (e) => {
-            const id = e.target.dataset.id;
-            const type = e.target.dataset.type;
-            const title = e.target.dataset.title;
-            // Fecha o modal e inicia o player
-            detailsModal.style.display = 'none';
-            handleWatchClick(id, type, title);
-        });
-        
-        // Anexa o listener para o botão Favoritar no Modal
-        detailsContent.querySelector('.modal-favorite-button').addEventListener('click', (e) => {
-            const id = e.currentTarget.dataset.id;
-            const type = e.currentTarget.dataset.type;
-            toggleFavorite(id, type);
-            // O toggleFavorite já chama updateFavoriteButtonState, que atualiza o ícone
-        });
-
-
-    } catch (error) {
-        console.error('Erro ao carregar detalhes:', error);
-        detailsContent.innerHTML = `<p>Erro ao carregar detalhes: ${error.message}</p>`;
-        detailsModal.querySelector('.modal-content').classList.remove('has-backdrop');
-        detailsModal.querySelector('.modal-content').style.backgroundImage = 'none';
-    }
-}
-
-
-/**
- * Função para buscar e mesclar os dados de IPTV-ORG.
- */
-async function fetchAndCombineIPTVData() {
-    try {
-        // Busca os 3 arquivos essenciais: canais, streams E logos.
-        const [channelsResponse, streamsResponse, logosResponse] = await Promise.all([
-            fetch(`${IPTV_ORG_API_BASE}/channels.json`),
-            fetch(`${IPTV_ORG_API_BASE}/streams.json`),
-            fetch(`${IPTV_ORG_API_BASE}/logos.json`) 
-        ]);
-
-        if (!channelsResponse.ok || !streamsResponse.ok || !logosResponse.ok) {
-            throw new Error("Falha ao carregar um ou mais arquivos IPTV-ORG.");
-        }
-
-        const channelsData = await channelsResponse.json();
-        const streamsData = await streamsResponse.json();
-        const logosData = await logosResponse.json(); 
-        
-        // Mapeia canais e logos por ID para acesso rápido
-        const channelMap = new Map(channelsData.map(c => [c.id, c]));
-        // Mapeia logos pela ID do canal. Muitos canais têm várias logos; pegamos a primeira.
-        const logoMap = new Map();
-        logosData.forEach(logo => {
-            if (logo.channel && !logoMap.has(logo.channel)) {
-                logoMap.set(logo.channel, logo.url);
-            }
-        });
-
-
-        const combinedList = streamsData
-            // Filtra streams M3U8 válidos
-            .filter(stream => stream.url && stream.url.endsWith('.m3u8')) 
-            .map(stream => {
-                const channel = channelMap.get(stream.channel);
-                
-                if (!channel) return null; 
-
-                // Obtém a URL da logo diretamente do mapeamento de logos
-                const logoUrl = logoMap.get(channel.id);
-
-                return {
-                    id: stream.channel,
-                    name: channel.name,
-                    category: channel.categories.join(', ') || 'Geral',
-                    streamUrl: stream.url, 
-                    // Usa a URL garantida pelo logos.json
-                    logoUrl: logoUrl || 'placeholder_logo.png' 
-                };
-            })
-            .filter(item => item !== null)
-            // Remove duplicados
-            .filter((value, index, self) => 
-                index === self.findIndex((t) => (
-                    t.id === value.id
-                ))
-            ); 
-
-        return combinedList;
-
-    } catch (error) {
-        console.error('Erro CRÍTICO ao buscar e combinar dados do IPTV-ORG:', error);
-        return []; 
-    }
-}
-
-
-/**
- * Carrega a lista de canais usando a nova fonte IPTV-ORG (TODOS OS PAÍSES).
- */
-async function loadLiveTV() {
-    resetView('results-container'); 
-    resultsContainer.innerHTML = '<h2>TV ao Vivo</h2><p>Buscando lista de canais (IPTV-ORG)...</p>';
-
-    currentCategory.endpoint = 'live_tv'; 
-    currentCategory.title = 'TV ao Vivo';
-    
-    // Carrega os dados APENAS se ainda não estiverem na memória
-    if (iptvChannels.length === 0) {
-        iptvChannels = await fetchAndCombineIPTVData();
-    }
-
-    const channels = iptvChannels;
-
-    if (channels.length === 0) {
-        resultsContainer.innerHTML = `
-            <h2>TV ao Vivo</h2>
-            <p style="color: red;">Erro: Não foi possível carregar a lista de canais ativos do IPTV-ORG. Tente novamente mais tarde.</p>
-        `;
-        return;
-    }
-
-    // Renderiza a grade de canais com o novo título
-    resultsContainer.innerHTML = `<section class="catalog-section">
-        <h2>Todos os Canais Ativos (${channels.length} itens)</h2>
-        <div id="channels-grid" class="results-grid"></div>
-    </section>`;
-    
-    const channelsGrid = document.getElementById('channels-grid');
-
-    channels.forEach(channel => {
-        const card = document.createElement('div');
-        // Adiciona a classe channel-card
-        card.className = 'movie-card channel-card';
-        
-        const logoSrc = channel.logoUrl || 'placeholder_logo.png'; 
-        const channelId = channel.id; 
-        const channelName = channel.name || 'Canal Desconhecido';
-        const channelCategory = channel.category; 
-
-        // Cards de TV Ao Vivo usam o card-info original (sem a lógica de hover)
-        card.innerHTML = `
-            <img src="${logoSrc}" 
-                 alt="${channelName}" 
-                 class="channel-logo" 
-                 loading="lazy"
-                 onerror="this.onerror=null; this.src='https://via.placeholder.com/200x200?text=Logo+N%C3%A3o+Encontrada'"> 
-            <div class="card-info">
-                <h3>${channelName}</h3> 
-                <p style="font-size: 0.9em; color: #ccc;">${channelCategory}</p>
-                <button class="watch-channel-button action-button primary-button" 
-                            data-channel-id="${channelId}" data-title="${channelName}" 
-                            style="width: 90%; margin-top: 10px;">
-                    ASSISTIR AO VIVO
-                </button>
-            </div>
-        `;
-        channelsGrid.appendChild(card);
-    });
-    
-    attachChannelListeners();
-}
-
-/**
- * Anexa listeners para os botões de ASSISTIR AO VIVO.
- */
-function attachChannelListeners() {
-    document.querySelectorAll('.watch-channel-button').forEach(button => {
-        button.onclick = null; 
-        button.onclick = (event) => {
-            const channelId = event.target.dataset.channelId;
-            const title = event.target.dataset.title;
-            
-            playLiveChannel(channelId, title); 
-        };
-    });
-}
-
-/**
- * Carrega o canal de TV no player (USANDO SOMENTE HLS.JS).
- */
-async function playLiveChannel(channelId, title) {
-    resetView('player-container');
-    playerTitle.textContent = title;
-    
-    const playerOptionsDiv = playerContainer.querySelector('.player-options');
-    if(playerOptionsDiv) {
-        playerOptionsDiv.style.display = 'none'; 
-    }
-    seriesSelectors.style.display = 'none'; 
-
-    videoPlayerDiv.innerHTML = `<p>Buscando URL do stream para ${title}...</p>`;
-
-    // Busca a URL M3U8 nos dados pré-carregados
-    const channel = iptvChannels.find(c => c.id === channelId);
-    const streamUrl = channel ? channel.streamUrl : null;
-
-    if (!streamUrl) {
-        videoPlayerDiv.innerHTML = `
-            <div style="padding: 30px; background-color: #2a2a2a; border-radius: 8px; max-width: 500px; margin: 50px auto; text-align: center; border: 1px solid red;">
-                <p style="color: red; font-size: 1.1em; margin-bottom: 15px;">
-                    ❌ Stream Indisponível
-                </p>
-                <p style="color: #ccc; font-size: 0.9em; margin-bottom: 20px;">
-                    Não foi possível encontrar a URL de stream M3U8 para **${title}** na base de dados IPTV-ORG.
-                </p>
-                <button onclick="loadLiveTV()" class="action-button primary-button" style="background-color: #555;">
-                    Voltar para a lista
-                </button>
-            </div>
-        `;
-        return;
-    }
-
-    // Tenta reproduzir o M3U8 via HLS.js
-    const video = document.createElement('video');
-    video.id = 'live-video-player';
-    video.controls = true;
-    video.autoplay = true; 
-    video.style.width = '100%';
-    video.style.height = '100%';
-    
-    videoPlayerDiv.innerHTML = '';
-    videoPlayerDiv.appendChild(video);
-    
-    if (typeof Hls !== 'undefined' && Hls.isSupported()) {
-        const hls = new Hls();
-        hls.loadSource(streamUrl);
-        hls.attachMedia(video);
-        hls.on(Hls.Events.MANIFEST_PARSED, function() {
-            video.play().catch(error => {
-                console.warn('Autoplay bloqueado pelo navegador.', error);
-                videoPlayerDiv.insertAdjacentHTML('beforeend', `
-                    <div class="stream-info-overlay" style="margin-top: 20px;">
-                        <p style="color: #ffcc00; font-weight: bold; margin-bottom: 5px;">
-                            ⚠️ CLIQUE NECESSÁRIO
-                        </p>
-                        <p style="color: #ccc; font-size: 0.9em; margin-bottom: 0;">
-                            O navegador bloqueou a reprodução automática. Clique no botão de Play no vídeo.
-                        </p>
-                    </div>
-                `);
-            });
-        });
-    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-        video.src = streamUrl;
-        video.addEventListener('loadedmetadata', function() {
-            video.play();
-        });
-    } else {
-         videoPlayerDiv.innerHTML = `<p style="color: red; margin-top: 50px;">
-            Seu navegador não suporta o formato de stream (M3U8).
-        </p>`;
-    }
-}
-
-
-/**
- * Função de busca manual (quando o usuário digita na busca).
- */
-async function searchMedia(query) {
-    if (!query) return; 
-
-    resetView('results-container');
-    resultsContainer.innerHTML = `<p>Buscando resultados para "${query}"...</p>`;
-    currentCategory.endpoint = null; 
-
-    const url = `${TMDB_BASE_URL}/search/multi?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(query)}&language=pt-BR`;
-
-    try {
-        const response = await fetch(url);
-        if (!response.ok) {
-            throw new Error('Erro ao buscar dados do TMDB. Verifique a chave da API.');
-        }
-        const data = await response.json();
-        
-        resultsContainer.innerHTML = `<section class="catalog-section"><h2>Resultados da Busca</h2><div id="search-results" class="results-grid"></div></section>`;
-        const searchResultsContainer = document.getElementById('search-results');
-
-        displayResults(data.results, searchResultsContainer);
-
-    } catch (error) {
-        console.error('Erro na busca:', error);
-        resultsContainer.innerHTML = `<p>Erro: ${error.message}</p>`;
-    }
-}
-
-
-// --- 5. EVENTOS ---
-
-// Evento de navegação: Listener para os links
-mainNav.addEventListener('click', (event) => {
-    if (event.target.tagName === 'A') {
-        event.preventDefault(); 
-        const endpoint = event.target.dataset.endpoint;
-        const title = event.target.textContent;
-
-        if (endpoint === 'catalog') {
-            loadCatalog(); 
-        } else if (endpoint === 'live_tv') { 
-            loadLiveTV();
-        } else if (endpoint === 'favorites') { 
-            loadFavoritesCatalog();
-        } else {
-            loadCategory(endpoint, title, 1); 
-        }
-    }
-});
-
-// Evento: Clique na logo/título para ir para TV ao Vivo
-logoContainer.addEventListener('click', (event) => {
-    event.preventDefault();
-    loadLiveTV();
-});
-
-// Evento de busca no clique do botão
-searchButton.addEventListener('click', () => {
-    const query = searchInput.value.trim();
-    if (query) {
-        searchMedia(query);
-    } else {
-        loadCatalog();
-    }
-});
-
-// Evento de busca no Enter
-searchInput.addEventListener('keypress', (event) => {
-    if (event.key === 'Enter') {
-        searchButton.click();
-    }
-});
-
-// Evento: Seleção de Temporada
-seasonSelect.addEventListener('change', (event) => {
-    const newSeason = parseInt(event.target.value);
-    currentMedia.currentSeason = newSeason;
-    updateEpisodeOptions(newSeason);
-});
-
-// Evento: Seleção de Episódio
-episodeSelect.addEventListener('change', (event) => {
-    currentMedia.currentEpisode = parseInt(event.target.value);
-});
-
-// Evento: Recarregar o player
-loadPlayerButton.addEventListener('click', () => {
-    if (currentMedia.tmdbId) {
-        createPlayer();
-    }
-});
-
-// Evento do Modal: Fecha ao clicar no botão 'x'
-closeButton.addEventListener('click', () => {
-    detailsModal.style.display = 'none';
-});
-
-// Evento do Modal: Fecha se o usuário clicar fora dele
-window.addEventListener('click', (event) => {
-    if (event.target == detailsModal) {
-        detailsModal.style.display = 'none';
-    }
-});
-
-// Evento: Voltar ao Catálogo
-backButton.addEventListener('click', () => {
-    resetView('catalog-container'); 
-    loadCatalog();
-    Object.assign(currentMedia, {
-        tmdbId: null, mediaType: null, title: null, imdbId: null, seasons: [], currentSeason: 1, currentEpisode: 1
-    });
-});
-
-// Inicialização: Carrega o catálogo e o banner
+/* ---------- INICIALIZAÇÃO ---------- */
 document.addEventListener('DOMContentLoaded', () => {
+  try {
+    favoritesList = loadFavoritesFromLocalStorage();
     loadCatalog();
-    loadHeroBanner(); 
-    loadGenres(); 
+    loadHeroBanner();
+    loadGenres();
+  } catch (err) {
+    console.error('Erro inicialização', err);
+  }
 });

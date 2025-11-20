@@ -1,109 +1,122 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CineStream</title>
-    <link rel="stylesheet" href="style.css">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>CineStream</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <header>
-        <div class="logo-container">
-            <img src="BUARQUE (1).png" alt="CineStream Logo" class="header-logo">
-            <h1 class="site-title">CineStream</h1>
-        </div>
-        
-        <nav id="main-nav">
-            <ul>
-                <li><a href="#" data-endpoint="catalog">Início</a></li>
-                <li><a href="#" data-endpoint="live_tv" data-title="TV ao Vivo">TV ao Vivo</a></li>
-                <li><a href="#" data-endpoint="favorites" data-title="Favoritos">Favoritos</a></li>
-                
-                <li class="dropdown">
-                    <a href="#" class="dropdown-toggle">Filmes ▼</a>
-                    <ul class="dropdown-menu" id="movies-dropdown">
-                        <li><a href="#" data-endpoint="/movie/now_playing" data-title="No Cinema">No Cinema</a></li>
-                        <li><a href="#" data-endpoint="/movie/top_rated" data-title="Mais Avaliados">Mais Avaliados</a></li>
-                        </ul>
-                </li>
-                
-                <li class="dropdown">
-                    <a href="#" class="dropdown-toggle">Séries ▼</a>
-                    <ul class="dropdown-menu" id="tv-dropdown">
-                        <li><a href="#" data-endpoint="/tv/on_the_air" data-title="Séries Atuais">Séries Atuais</a></li>
-                        <li><a href="#" data-endpoint="/tv/top_rated" data-title="Mais Avaliadas">Mais Avaliadas</a></li>
-                        </ul>
-                </li>
-                
-                <li><a href="#" data-endpoint="/trending/all/week" data-title="Populares">Populares</a></li>
-            </ul>
-        </nav>
+  <header>
+    <div class="header-inner">
+      <div class="left-group">
+        <button id="menu-toggle" aria-label="Abrir menu" class="hamburger" title="Menu">☰</button>
+        <div class="logo-container" id="home-btn" role="button" tabindex="0">
+          <img src="BUARQUE (1).png" alt="CineStream" class="header-logo">
+          <span class="site-title">CineStream</span>
+        </div>
+      </div>
 
-        <div class="search-container">
-            <input type="text" id="search-input" placeholder="Buscar filme ou série...">
-            <button id="search-button">Buscar</button>
-        </div>
-    </header>
+      <nav id="main-nav" class="nav-visible" aria-label="Navegação principal">
+        <ul>
+          <li><a href="#" data-endpoint="catalog">Início</a></li>
+          <li><a href="#" data-endpoint="live_tv" data-title="TV ao Vivo">TV ao Vivo</a></li>
+          <li><a href="#" data-endpoint="favorites" data-title="Favoritos">Favoritos</a></li>
+          <li><a href="#" data-endpoint="/movie/popular" data-title="Filmes">Filmes</a></li>
+          <li><a href="#" data-endpoint="/tv/popular" data-title="Séries">Séries</a></li>
+          <li><a href="#" data-endpoint="/trending/all/week" data-title="Populares">Populares</a></li>
+        </ul>
+      </nav>
 
-    <section id="hero-banner-container" style="display: none;">
-        <div id="hero-carousel"></div>
+      <div class="right-group">
+        <div class="search-container">
+          <input type="text" id="search-input" placeholder="Buscar filme ou série...">
+          <button id="search-button">Buscar</button>
+        </div>
+        <div class="profile-placeholder" title="Conta">👤</div>
+      </div>
+    </div>
+  </header>
+
+  <!-- HERO -->
+  <section id="hero-banner-container" aria-hidden="false">
+    <div id="hero-carousel"></div>
+  </section>
+
+  <!-- LINHA DE GÊNEROS (sem rótulo) -->
+  <section id="genre-bar" aria-label="Gêneros">
+    <div class="genre-toolbar">
+      <div class="genre-wrap">
+        <button id="genre-prev" class="genre-nav" aria-label="Gêneros anteriores">◀</button>
+        <div class="genre-scroller" id="genre-scroller" role="tablist" aria-label="Lista de gêneros"></div>
+        <button id="genre-next" class="genre-nav" aria-label="Próximos gêneros">▶</button>
+        <div class="genre-fade left"></div>
+        <div class="genre-fade right"></div>
+      </div>
+    </div>
+  </section>
+
+  <main>
+    <section id="catalog-container" class="catalog-wrap"></section>
+    <section id="results-container" class="results-grid" style="display:none;">
+        <div id="pagination-controls" class="pagination-controls" style="display:none;">
+  <button id="page-prev" class="page-btn">← Página anterior</button>
+  <span id="page-info" class="page-info"></span>
+  <button id="page-next" class="page-btn">Próxima página →</button>
+</div>
+
     </section>
 
-    <main>
-        <section id="catalog-container"></section>
+    <section id="player-container" style="display:none;">
+      <button id="back-button" class="round-back-button">← Voltar</button>
+      <h2 id="player-title">Título do Filme/Série</h2>
 
-        <section id="results-container" class="results-grid" style="display: none;"></section>
+      <div class="player-options">
+        <div class="custom-select-container">
+          <label for="player-source">Fonte do Player:</label>
+          <div class="custom-select-wrapper">
+            <select id="player-source" class="styled-select">
+              <option value="megaembed.com">MegaEmbed</option>
+              <option value="vidsrc-embed.ru">VidSrc-Embed</option>
+              <option value="2embed.top">2Embed</option>
+              <option value="vidsrc.cc">VidSrc.cc</option>
+              <option value="playerflixapi.com">PlayerFlix API</option>
+              <option value="vidsrc.to">VidSrc.to (IMDB)</option>
+            </select>
+          </div>
+        </div>
 
-        <section id="player-container" style="display: none;">
-            <button id="back-button" class="round-back-button">← Voltar</button>
-            <h2 id="player-title">Título do Filme/Série</h2>
-            
-            <div class="player-options">
-                <div class="custom-select-container">
-                    <label for="player-source">Fonte do Player:</label>
-                    <div class="custom-select-wrapper">
-                        <select id="player-source" class="styled-select">
-                            <option value="megaembed.com">MegaEmbed</option>
-                            <option value="vidsrc-embed.ru">VidSrc-Embed</option>
-                            <option value="2embed.top">2Embed</option>
-                            <option value="vidsrc.cc">VidSrc.cc</option>
-                            <option value="playerflixapi.com">PlayerFlix API</option>
-                            <option value="vidsrc.to">VidSrc.to (IMDB)</option>
-                        </select>
-                    </div>
-                    
-                </div>
-                
-                <div id="series-selectors" class="series-selectors-wrapper" style="display: none;">
-                    <div class="custom-select-container">
-                        <label for="season-select">Temporada:</label>
-                        <div class="custom-select-wrapper small-select">
-                            <select id="season-select"></select>
-                        </div>
-                    </div>
-                    
-                    <div class="custom-select-container">
-                        <label for="episode-select">Episódio:</label>
-                        <div class="custom-select-wrapper small-select">
-                            <select id="episode-select"></select>
-                        </div>
-                    </div>
-                </div>
-                
-                <button id="load-player-button" class="action-button primary-button">Carregar Player</button>
-            </div>
+        <div id="series-selectors" class="series-selectors-wrapper" style="display:none;">
+          <div class="custom-select-container">
+            <label for="season-select">Temporada:</label>
+            <div class="custom-select-wrapper small-select">
+              <select id="season-select"></select>
+            </div>
+          </div>
 
-            <div id="video-player"></div>
-        </section>
-        <div id="details-modal" class="modal">
-            <div class="modal-content">
-                <span class="close-button">&times;</span>
-                <div id="details-content">
-                    </div>
-            </div>
-        </div>
-    </main>
-    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
-    <script src="script.js"></script>
+          <div class="custom-select-container">
+            <label for="episode-select">Episódio:</label>
+            <div class="custom-select-wrapper small-select">
+              <select id="episode-select"></select>
+            </div>
+          </div>
+        </div>
+
+        <button id="load-player-button" class="action-button primary-button">Carregar Player</button>
+      </div>
+
+      <div id="video-player"></div>
+    </section>
+
+    <div id="details-modal" class="modal" role="dialog" aria-modal="true" aria-hidden="true">
+      <div class="modal-content">
+        <span class="close-button" tabindex="0" role="button" aria-label="Fechar">&times;</span>
+        <div id="details-content"></div>
+      </div>
+    </div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <script src="script.js"></script>
 </body>
 </html>
