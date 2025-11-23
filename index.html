@@ -17,7 +17,7 @@
         </div>
       </div>
 
-      <nav id="main-nav" class="nav-visible" aria-label="Navegação principal">
+      <nav id="main-nav" aria-label="Navegação principal">
         <ul>
           <li><a href="#" data-endpoint="catalog">Início</a></li>
           <li><a href="#" data-endpoint="live_tv" data-title="TV ao Vivo">TV ao Vivo</a></li>
@@ -31,7 +31,7 @@
       <div class="right-group">
         <div class="search-container">
           <input type="text" id="search-input" placeholder="Buscar filme ou série...">
-          <button id="search-button">Buscar</button>
+          <button id="search-button" aria-label="Buscar filme ou série">Buscar</button>
         </div>
         <div class="profile-placeholder" title="Conta">👤</div>
       </div>
@@ -43,7 +43,7 @@
     <div id="hero-carousel"></div>
   </section>
 
-  <!-- LINHA DE GÊNEROS (sem rótulo) -->
+  <!-- GENRE BAR (sem rótulo) -->
   <section id="genre-bar" aria-label="Gêneros">
     <div class="genre-toolbar">
       <div class="genre-wrap">
@@ -58,14 +58,16 @@
 
   <main>
     <section id="catalog-container" class="catalog-wrap"></section>
-    <section id="results-container" class="results-grid" style="display:none;">
-        <div id="pagination-controls" class="pagination-controls" style="display:none;">
-  <button id="page-prev" class="page-btn">← Página anterior</button>
-  <span id="page-info" class="page-info"></span>
-  <button id="page-next" class="page-btn">Próxima página →</button>
-</div>
 
-    </section>
+    <section id="results-container" class="results-grid" style="display:none;"></section>
+
+    <!-- PAGINAÇÃO: controles (sempre presentes no HTML) -->
+    <div id="pagination-controls" class="pagination-controls" style="display:none;">
+      <button id="page-prev" class="page-btn" aria-label="Página anterior">←</button>
+      <div id="page-numbers" class="page-numbers" aria-live="polite"></div>
+      <span id="page-info" class="page-info" aria-hidden="true"></span>
+      <button id="page-next" class="page-btn" aria-label="Próxima página">→</button>
+    </div>
 
     <section id="player-container" style="display:none;">
       <button id="back-button" class="round-back-button">← Voltar</button>

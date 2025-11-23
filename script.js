@@ -1,62 +1,33 @@
-/* script.js - Versão completa revisada
-   - Carregamento do catálogo, hero com fallback, gêneros, busca, detalhes, player, live TV.
-   - Paginação para categorias (currentCategoryEndpoint, currentCategoryPage, totalCategoryPages).
-   - Proteções defensivas (try/catch, checagens de elementos).
-   - Comentários e pontos fáceis de ajustar.
-*/
-
-/* CONFIG */
-const TMDB_API_KEY = '62fd8e76492e4bdda5e40b8eb6520a00'; // substitua pela sua chave se necessário
+/* script.js - versão final (paginação garantida) */
+const TMDB_API_KEY = '62fd8e76492e4bdda5e40b8eb6520a00';
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 const TMDB_IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/original';
 const TMDB_POSTER_BASE_URL = 'https://image.tmdb.org/t/p/w500';
 const IPTV_ORG_API_BASE = 'https://iptv-org.github.io/api';
 
-/* ELEMENTS (pega referências do DOM) */
-const menuToggle = document.getElementById('menu-toggle');
-const mainNav = document.getElementById('main-nav');
-const searchInput = document.getElementById('search-input');
-const searchButton = document.getElementById('search-button');
-const heroBannerContainer = document.getElementById('hero-banner-container');
-const heroCarousel = document.getElementById('hero-carousel');
-const catalogContainer = document.getElementById('catalog-container');
-const resultsContainer = document.getElementById('results-container');
-const detailsModal = document.getElementById('details-modal');
-const detailsContent = document.getElementById('details-content');
-const genreScroller = document.getElementById('genre-scroller');
-const genrePrev = document.getElementById('genre-prev');
-const genreNext = document.getElementById('genre-next');
-const playerContainer = document.getElementById('player-container');
-const playerTitle = document.getElementById('player-title');
-const videoPlayerDiv = document.getElementById('video-player');
-const backButton = document.getElementById('back-button');
-const playerSourceSelect = document.getElementById('player-source');
-const loadPlayerButton = document.getElementById('load-player-button');
-const seriesSelectors = document.getElementById('series-selectors');
-const seasonSelect = document.getElementById('season-select');
-const episodeSelect = document.getElementById('episode-select');
-const closeButton = document.querySelector('.close-button');
+// referências (serão definidas no DOMContentLoaded)
+let menuToggle, mainNav, searchInput, searchButton, heroBannerContainer, heroCarousel;
+let catalogContainer, resultsContainer, detailsModal, detailsContent, genreScroller, genrePrev, genreNext;
+let playerContainer, playerTitle, videoPlayerDiv, backButton, playerSourceSelect, loadPlayerButton;
+let seriesSelectors, seasonSelect, episodeSelect, closeButton;
 
-/* Paginação (elementos que você adicionou no HTML) */
-const paginationControls = document.getElementById('pagination-controls');
-const pagePrevBtn = document.getElementById('page-prev');
-const pageNextBtn = document.getElementById('page-next');
-const pageInfoSpan = document.getElementById('page-info');
+// paginação refs
+let paginationControls, pagePrevBtn, pageNextBtn, pageNumbersContainer, pageInfoSpan;
 
-/* Estado global */
+// estado global
 let favoritesList = [];
 let apiCache = new Map();
 let heroInterval = null;
 let currentSlide = 0;
 let currentMedia = { tmdbId: null, mediaType: null, title: null, imdbId: null, seasons: [], currentSeason: 1, currentEpisode: 1 };
 
-/* Paginação estado de categoria */
+// paginação state
 let currentCategoryEndpoint = null;
 let currentCategoryTitle = "";
 let currentCategoryPage = 1;
 let totalCategoryPages = 1;
 
-/* ---------- UTIL ---------- */
+/* ---------- util ---------- */
 function debounce(fn, wait = 300) { let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), wait); }; }
 async function cachedFetch(url) {
   if (!url) throw new Error('URL indefinida');
@@ -84,7 +55,87 @@ function updateAllCardFavoriteIcons(tmdbId, mediaType) {
   });
 }
 
-/* ---------- HERO (com fallback) ---------- */
+/* ---------- init refs (chave para garantir paginação) ---------- */
+function initRefs() {
+  menuToggle = document.getElementById('menu-toggle');
+  mainNav = document.getElementById('main-nav');
+  searchInput = document.getElementById('search-input');
+  searchButton = document.getElementById('search-button');
+  heroBannerContainer = document.getElementById('hero-banner-container');
+  heroCarousel = document.getElementById('hero-carousel');
+  catalogContainer = document.getElementById('catalog-container');
+  resultsContainer = document.getElementById('results-container');
+  detailsModal = document.getElementById('details-modal');
+  detailsContent = document.getElementById('details-content');
+  genreScroller = document.getElementById('genre-scroller');
+  genrePrev = document.getElementById('genre-prev');
+  genreNext = document.getElementById('genre-next');
+  playerContainer = document.getElementById('player-container');
+  playerTitle = document.getElementById('player-title');
+  videoPlayerDiv = document.getElementById('video-player');
+  backButton = document.getElementById('back-button');
+  playerSourceSelect = document.getElementById('player-source');
+  loadPlayerButton = document.getElementById('load-player-button');
+  seriesSelectors = document.getElementById('series-selectors');
+  seasonSelect = document.getElementById('season-select');
+  episodeSelect = document.getElementById('episode-select');
+  closeButton = document.querySelector('.close-button');
+
+  // paginação: pegar do DOM (HTML foi atualizado para sempre conter os controles)
+  paginationControls = document.getElementById('pagination-controls');
+  pagePrevBtn = document.getElementById('page-prev');
+  pageNextBtn = document.getElementById('page-next');
+  pageNumbersContainer = document.getElementById('page-numbers');
+  pageInfoSpan = document.getElementById('page-info');
+
+  // caso algum elemento de paginação esteja ausente, criá-lo (defensivo)
+  if (!paginationControls) {
+    paginationControls = document.createElement('div');
+    paginationControls.id = 'pagination-controls';
+    paginationControls.className = 'pagination-controls';
+    paginationControls.style.display = 'none';
+
+    pagePrevBtn = document.createElement('button');
+    pagePrevBtn.id = 'page-prev';
+    pagePrevBtn.className = 'page-btn';
+    pagePrevBtn.textContent = '←';
+
+    pageNextBtn = document.createElement('button');
+    pageNextBtn.id = 'page-next';
+    pageNextBtn.className = 'page-btn';
+    pageNextBtn.textContent = '→';
+
+    pageNumbersContainer = document.createElement('div');
+    pageNumbersContainer.id = 'page-numbers';
+    pageNumbersContainer.className = 'page-numbers';
+
+    pageInfoSpan = document.createElement('span');
+    pageInfoSpan.id = 'page-info';
+    pageInfoSpan.className = 'page-info';
+
+    paginationControls.appendChild(pagePrevBtn);
+    paginationControls.appendChild(pageNumbersContainer);
+    paginationControls.appendChild(pageInfoSpan);
+    paginationControls.appendChild(pageNextBtn);
+
+    if (resultsContainer && resultsContainer.parentNode) resultsContainer.parentNode.insertBefore(paginationControls, resultsContainer.nextSibling);
+    else document.body.appendChild(paginationControls);
+  }
+
+  // garantir listeners prev/next
+  if (pagePrevBtn) {
+    pagePrevBtn.addEventListener('click', () => {
+      if (currentCategoryPage > 1) loadCategory(currentCategoryEndpoint, currentCategoryTitle, currentCategoryPage - 1);
+    });
+  }
+  if (pageNextBtn) {
+    pageNextBtn.addEventListener('click', () => {
+      if (currentCategoryPage < totalCategoryPages) loadCategory(currentCategoryEndpoint, currentCategoryTitle, currentCategoryPage + 1);
+    });
+  }
+}
+
+/* ---------- hero ---------- */
 async function loadHeroBanner() {
   try {
     const url = `${TMDB_BASE_URL}/trending/all/day?api_key=${TMDB_API_KEY}&language=pt-BR`;
@@ -92,7 +143,6 @@ async function loadHeroBanner() {
     const trending = (data.results || []).filter(i => i.backdrop_path).slice(0, 6);
     if (!heroCarousel) return;
     heroCarousel.innerHTML = '';
-
     if (!trending.length) {
       const fallback = document.createElement('div');
       fallback.className = 'hero-slide fallback active';
@@ -100,7 +150,6 @@ async function loadHeroBanner() {
       heroCarousel.appendChild(fallback);
       return;
     }
-
     trending.forEach((item, i) => {
       const slide = document.createElement('div');
       slide.className = 'hero-slide' + (i === 0 ? ' active' : '');
@@ -108,14 +157,11 @@ async function loadHeroBanner() {
       slide.innerHTML = `<div class="hero-overlay"></div><div class="hero-content"><h2>${item.title || item.name}</h2><p>${(item.overview || '').substring(0, 220)}</p><button class="hero-watch-button" data-id="${item.id}" data-type="${item.media_type || 'movie'}" data-title="${item.title || item.name}">ASSISTIR</button></div>`;
       heroCarousel.appendChild(slide);
     });
-
     heroCarousel.querySelectorAll('.hero-watch-button').forEach(b => b.addEventListener('click', e => {
       const t = e.currentTarget.dataset; handleWatchClick(t.id, t.type, t.title);
     }));
-
     if (heroInterval) clearInterval(heroInterval);
     if (trending.length > 1) heroInterval = setInterval(() => rotateBanner(), 7000);
-
   } catch (err) {
     console.warn('Hero fallback ativado: ', err);
     if (!heroCarousel) return;
@@ -135,7 +181,7 @@ function rotateBanner() {
   slides[currentSlide].classList.add('active');
 }
 
-/* ---------- GÊNEROS ---------- */
+/* ---------- genres ---------- */
 async function loadGenres() {
   try {
     const movieData = await cachedFetch(`${TMDB_BASE_URL}/genre/movie/list?api_key=${TMDB_API_KEY}&language=pt-BR`);
@@ -146,20 +192,17 @@ async function loadGenres() {
     populateGenreBar([]);
   }
 }
-
 function populateGenreBar(genres) {
   if (!genreScroller) return;
   genreScroller.innerHTML = '';
   const btnAll = createGenreButton('Todos', 'catalog');
   btnAll.classList.add('active');
   genreScroller.appendChild(btnAll);
-
   genres.forEach(g => {
     const endpoint = `/discover/movie?with_genres=${g.id}`;
     const b = createGenreButton(g.name, endpoint, g.id);
     genreScroller.appendChild(b);
   });
-
   const arr = Array.from(genreScroller.querySelectorAll('.genre-button'));
   arr.forEach((btn, idx) => {
     btn.addEventListener('click', (e) => {
@@ -178,24 +221,11 @@ function populateGenreBar(genres) {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); btn.click(); }
     });
   });
-
-  requestAnimationFrame(() => {
-    const active = genreScroller.querySelector('.genre-button.active');
-    if (active) smoothCenterScroll(active);
-  });
+  requestAnimationFrame(() => { const active = genreScroller.querySelector('.genre-button.active'); if (active) smoothCenterScroll(active); });
 }
-
 function createGenreButton(name, endpoint = 'catalog', id) {
-  const b = document.createElement('button');
-  b.className = 'genre-button';
-  b.setAttribute('role', 'tab');
-  b.textContent = name;
-  b.dataset.endpoint = endpoint;
-  b.dataset.title = name;
-  if (id) b.dataset.genreId = id;
-  return b;
+  const b = document.createElement('button'); b.className = 'genre-button'; b.setAttribute('role', 'tab'); b.textContent = name; b.dataset.endpoint = endpoint; b.dataset.title = name; if (id) b.dataset.genreId = id; return b;
 }
-
 function smoothCenterScroll(el) {
   if (!genreScroller || !el) return;
   const scRect = genreScroller.getBoundingClientRect();
@@ -206,7 +236,7 @@ function smoothCenterScroll(el) {
   genreScroller.scrollTo({ left: target, behavior: 'smooth' });
 }
 
-/* ---------- DISPLAY / CARDS ---------- */
+/* ---------- display cards ---------- */
 function displayResults(results = [], container = document.getElementById('results-container'), forcedType = null) {
   if (!container) return;
   if (!Array.isArray(results)) results = [];
@@ -245,23 +275,20 @@ function displayResults(results = [], container = document.getElementById('resul
   container.appendChild(frag);
 }
 
-/* ---------- CATALOG (PRINCIPAL) ---------- */
+/* ---------- catalog ---------- */
 async function loadCatalog() {
   try {
     if (catalogContainer) catalogContainer.style.display = 'block';
     if (resultsContainer) resultsContainer.style.display = 'none';
     if (playerContainer) playerContainer.style.display = 'none';
     if (paginationControls) paginationControls.style.display = 'none';
-
     if (!catalogContainer) return;
     catalogContainer.innerHTML = '';
-
     const queries = [
       { endpoint: '/movie/popular', title: 'Filmes Populares da Semana', type: 'movie' },
       { endpoint: '/tv/on_the_air', title: 'Séries Atuais', type: 'tv' },
       { endpoint: '/movie/top_rated', title: 'Os Filmes Mais Bem Avaliados', type: 'movie' }
     ];
-
     for (const q of queries) {
       const section = document.createElement('section');
       section.className = 'catalog-section';
@@ -285,20 +312,17 @@ async function loadCatalog() {
           card.innerHTML = `<img src="${poster}" alt="${title}" loading="lazy"><div class="card-info"><h3>${title}</h3><p class="metadata-line"><span class="metadata-item">${(item.release_date || item.first_air_date || '').substring(0, 4)}</span> <span class="metadata-item imdb-score">${item.vote_average ? item.vote_average.toFixed(1) : ''}</span></p><div class="card-actions"><button class="action-button icon-button details-button">i</button><button class="action-button icon-button icon-save-button" data-id="${item.id}" data-type="${type}"><span class="icon-save">${isFavorite(item.id, type) ? '&#9829;' : '&#9825;'}</span></button></div></div>`;
           row.appendChild(card);
         });
-
         const prevBtn = section.querySelector('.prev-button');
         const nextBtn = section.querySelector('.next-button');
         const scrollAmount = 500;
         prevBtn?.addEventListener('click', () => row.scrollBy({ left: -scrollAmount, behavior: 'smooth' }));
         nextBtn?.addEventListener('click', () => row.scrollBy({ left: scrollAmount, behavior: 'smooth' }));
         updateCarouselNavVisibility(row, prevBtn, nextBtn);
-
       } catch (errRow) {
         console.error('Erro carregar seção', q.title, errRow);
         if (row) row.innerHTML = `<p>Erro ao carregar seção.</p>`;
       }
     }
-
   } catch (err) {
     console.error('Erro loadCatalog', err);
     if (catalogContainer) catalogContainer.innerHTML = `<p>Erro ao carregar catálogo: ${err.message}</p>`;
@@ -319,54 +343,91 @@ function updateCarouselNavVisibility(row, prevBtn, nextBtn) {
   window.addEventListener('resize', check);
 }
 
-/* ---------- CATEGORY (com paginação) ---------- */
+/* ---------- CATEGORY e PAGINAÇÃO ---------- */
 async function loadCategory(endpoint, title = "Categoria", page = 1) {
   try {
     resetToResultsView();
-
-    // Atualiza estado de paginação
     currentCategoryEndpoint = endpoint;
     currentCategoryTitle = title;
     currentCategoryPage = page;
-
     if (!endpoint) return loadCatalog();
-
     const finalEndpoint = endpoint.includes('?') ? `${endpoint}&page=${page}` : `${endpoint}?page=${page}`;
     const url = `${TMDB_BASE_URL}${finalEndpoint}&api_key=${TMDB_API_KEY}&language=pt-BR`;
     const data = await cachedFetch(url);
-
     totalCategoryPages = data.total_pages || 1;
     const primaryType = endpoint.includes('/movie/') || endpoint.includes('discover/movie') ? 'movie' : 'tv';
-
     if (!resultsContainer) return;
+    resultsContainer.style.display = 'block';
     resultsContainer.innerHTML = `
       <section class="catalog-section">
         <h2>${title} (Página ${page})</h2>
         <div id="category-results" class="results-grid"></div>
       </section>
     `;
-
     displayResults(data.results || [], document.getElementById('category-results'), primaryType);
-
-    updatePaginationUI();
-
+    renderPaginationNumeric();
   } catch (err) {
     console.error('Erro loadCategory', err);
     if (resultsContainer) resultsContainer.innerHTML = `<p>Erro ao carregar categoria.</p>`;
   }
 }
 
-/* Atualiza a UI de paginação (mostra controles e texto) */
-function updatePaginationUI() {
-  if (!paginationControls || !pageInfoSpan) return;
+function renderPaginationNumeric() {
+  if (!paginationControls || !pageNumbersContainer || !pageInfoSpan) return;
   paginationControls.style.display = 'flex';
   pageInfoSpan.textContent = `Página ${currentCategoryPage} de ${totalCategoryPages}`;
-  // desabilita botões conforme limites
   if (pagePrevBtn) pagePrevBtn.disabled = currentCategoryPage <= 1;
   if (pageNextBtn) pageNextBtn.disabled = currentCategoryPage >= totalCategoryPages;
+
+  const maxButtons = 7;
+  let start = Math.max(1, currentCategoryPage - Math.floor(maxButtons / 2));
+  let end = start + maxButtons - 1;
+  if (end > totalCategoryPages) { end = totalCategoryPages; start = Math.max(1, end - maxButtons + 1); }
+
+  pageNumbersContainer.innerHTML = '';
+
+  if (start > 1) {
+    pageNumbersContainer.appendChild(createPageNumberBtn(1));
+    if (start > 2) {
+      const dots = document.createElement('div'); dots.className = 'page-dots'; dots.textContent = '...'; dots.style.color = '#aaa'; dots.style.padding = '0 6px';
+      pageNumbersContainer.appendChild(dots);
+    }
+  }
+
+  for (let p = start; p <= end; p++) {
+    pageNumbersContainer.appendChild(createPageNumberBtn(p));
+  }
+
+  if (end < totalCategoryPages) {
+    if (end < totalCategoryPages - 1) {
+      const dots = document.createElement('div'); dots.className = 'page-dots'; dots.textContent = '...'; dots.style.color = '#aaa'; dots.style.padding = '0 6px';
+      pageNumbersContainer.appendChild(dots);
+    }
+    pageNumbersContainer.appendChild(createPageNumberBtn(totalCategoryPages));
+  }
 }
 
-/* ---------- FAVORITOS ---------- */
+function createPageNumberBtn(pageNum) {
+  const btn = document.createElement('button');
+  btn.className = 'page-number-btn';
+  btn.textContent = pageNum;
+  btn.dataset.page = pageNum;
+  if (pageNum === currentCategoryPage) {
+    btn.classList.add('active');
+    btn.setAttribute('aria-current', 'page');
+    btn.disabled = true;
+  }
+  btn.addEventListener('click', () => {
+    const page = parseInt(btn.dataset.page);
+    if (!isNaN(page) && page !== currentCategoryPage) loadCategory(currentCategoryEndpoint, currentCategoryTitle, page);
+  });
+  return btn;
+}
+
+/* ---------- favoritos / live tv / details / player (mantidos) ---------- */
+/* ... (para brevidade no chat, as funções relevantes são idênticas às versões anteriores) ... */
+
+/* Implementações resumidas e não alteradas: loadFavoritesCatalog, fetchAndCombineIPTVData, loadLiveTV, playLiveStream, showDetailsModal, closeDetailsModal, getImdbId, loadSeriesOptions, updateEpisodeOptions, handleWatchClick, createPlayer */
 async function loadFavoritesCatalog() {
   try {
     resetToResultsView();
@@ -380,8 +441,7 @@ async function loadFavoritesCatalog() {
     });
     const raw = await Promise.all(promises);
     const valid = raw.filter(x => x && x.id);
-    const grid = document.getElementById('favorites-grid');
-    grid.innerHTML = '';
+    const grid = document.getElementById('favorites-grid'); grid.innerHTML = '';
     displayResults(valid.map(item => ({ ...item, media_type: item.title ? 'movie' : 'tv' })), grid);
     if (paginationControls) paginationControls.style.display = 'none';
   } catch (err) {
@@ -390,7 +450,6 @@ async function loadFavoritesCatalog() {
   }
 }
 
-/* ---------- LIVE TV (IPTV) ---------- */
 async function fetchAndCombineIPTVData() {
   try {
     const [channels, streams, logos] = await Promise.all([
@@ -407,7 +466,6 @@ async function fetchAndCombineIPTVData() {
     return combined;
   } catch (e) { console.warn('Erro IPTV', e); return []; }
 }
-
 let iptvChannels = [];
 async function loadLiveTV() {
   try {
@@ -426,7 +484,6 @@ async function loadLiveTV() {
     if (paginationControls) paginationControls.style.display = 'none';
   } catch (err) { console.error('Erro loadLiveTV', err); if (resultsContainer) resultsContainer.innerHTML = '<p>Erro ao carregar TV Ao Vivo.</p>'; }
 }
-
 function playLiveStream(url) {
   try {
     resetToPlayerView('Ao Vivo');
@@ -440,7 +497,6 @@ function playLiveStream(url) {
   } catch (e) { console.error('playLiveStream error', e); }
 }
 
-/* ---------- DETAILS MODAL ---------- */
 async function showDetailsModal(tmdbId, mediaType) {
   try {
     if (!detailsModal || !detailsContent) return;
@@ -461,7 +517,6 @@ async function showDetailsModal(tmdbId, mediaType) {
 }
 function closeDetailsModal() { if (detailsModal) { detailsModal.classList.remove('open'); detailsModal.setAttribute('aria-hidden', 'true'); } }
 
-/* ---------- PLAYER ---------- */
 async function getImdbId(tmdbId, mediaType) {
   try { const type = mediaType === 'movie' ? 'movie' : 'tv'; const data = await cachedFetch(`${TMDB_BASE_URL}/${type}/${tmdbId}?api_key=${TMDB_API_KEY}`); return data.imdb_id || null; } catch (e) { return null; }
 }
@@ -483,7 +538,6 @@ function updateEpisodeOptions(seasonNumber) {
   episodeSelect.innerHTML = '';
   if (season && season.episode_count > 0) { for (let i = 1; i <= season.episode_count; i++) { const o = document.createElement('option'); o.value = i; o.textContent = `E${i}`; episodeSelect.appendChild(o); } currentMedia.currentEpisode = 1; } else currentMedia.currentEpisode = null;
 }
-
 async function handleWatchClick(tmdbId, mediaType, mediaTitle) {
   try {
     currentMedia.tmdbId = parseInt(tmdbId);
@@ -494,7 +548,6 @@ async function handleWatchClick(tmdbId, mediaType, mediaTitle) {
     createPlayer();
   } catch (e) { console.error('Erro handleWatchClick', e); }
 }
-
 function createPlayer() {
   try {
     const source = playerSourceSelect?.value || 'megaembed.com';
@@ -515,7 +568,7 @@ function createPlayer() {
   } catch (e) { console.error('Erro createPlayer', e); if (videoPlayerDiv) videoPlayerDiv.innerHTML = '<p>Erro ao carregar player</p>'; }
 }
 
-/* ---------- HELPERS DE VIEW ---------- */
+/* ---------- view helpers ---------- */
 function resetToResultsView() {
   if (catalogContainer) catalogContainer.style.display = 'none';
   if (resultsContainer) resultsContainer.style.display = 'block';
@@ -530,67 +583,55 @@ function resetToPlayerView(title) {
   if (paginationControls) paginationControls.style.display = 'none';
 }
 
-/* ---------- EVENTOS GLOBAIS ---------- */
-document.body.addEventListener('click', (e) => {
-  const detailBtn = e.target.closest('.details-button');
-  if (detailBtn) { e.stopPropagation(); const card = detailBtn.closest('.movie-card'); if (card) showDetailsModal(card.dataset.id, card.dataset.type); return; }
-  const favBtn = e.target.closest('.icon-save-button');
-  if (favBtn) { e.stopPropagation(); toggleFavorite(favBtn.dataset.id, favBtn.dataset.type); return; }
-  const watchChannelBtn = e.target.closest('.watch-channel-button');
-  if (watchChannelBtn) { const url = watchChannelBtn.dataset.stream; if (url) playLiveStream(url); return; }
-  const card = e.target.closest('.movie-card');
-  if (card && !e.target.closest('.icon-button') && !e.target.closest('.details-button')) { handleWatchClick(card.dataset.id, card.dataset.type, card.dataset.title); return; }
-});
-
-document.addEventListener('click', (e) => {
-  const a = e.target.closest('#main-nav a');
-  if (!a) return;
-  e.preventDefault();
-  const endpoint = a.dataset.endpoint;
-  const title = a.dataset.title || a.textContent.trim();
-  if (!endpoint || endpoint === 'catalog') loadCatalog();
-  else if (endpoint === 'live_tv') loadLiveTV();
-  else if (endpoint === 'favorites') loadFavoritesCatalog();
-  else loadCategory(endpoint, title, 1);
-});
-
-const debouncedSearch = debounce(q => searchMedia(q), 300);
-searchButton?.addEventListener('click', () => { const q = searchInput.value.trim(); if (q) searchMedia(q); else loadCatalog(); });
-searchInput?.addEventListener('input', (e) => { const q = e.target.value.trim(); if (!q) return; debouncedSearch(q); });
-searchInput?.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); const q = searchInput.value.trim(); if (q) searchMedia(q); } });
-
-closeButton?.addEventListener('click', () => { closeDetailsModal(); });
-window.addEventListener('click', (e) => { if (e.target === detailsModal) closeDetailsModal(); });
-
-backButton?.addEventListener('click', () => { if (catalogContainer) { catalogContainer.style.display = 'block'; resultsContainer.style.display = 'none'; playerContainer.style.display = 'none'; } });
-
-seasonSelect?.addEventListener('change', (e) => { currentMedia.currentSeason = parseInt(e.target.value); updateEpisodeOptions(currentMedia.currentSeason); });
-episodeSelect?.addEventListener('change', (e) => { currentMedia.currentEpisode = parseInt(e.target.value); });
-
-menuToggle?.addEventListener('click', () => { if (!mainNav) return; mainNav.classList.toggle('nav-hidden'); });
-
-genreScroller?.addEventListener('keydown', (e) => { if (e.key === 'ArrowRight') { e.preventDefault(); genreScroller.scrollBy({ left: 200, behavior: 'smooth' }); } if (e.key === 'ArrowLeft') { e.preventDefault(); genreScroller.scrollBy({ left: -200, behavior: 'smooth' }); } });
-
-genrePrev?.addEventListener('click', () => { if (genreScroller) genreScroller.scrollBy({ left: -300, behavior: 'smooth' }); });
-genreNext?.addEventListener('click', () => { if (genreScroller) genreScroller.scrollBy({ left: 300, behavior: 'smooth' }); });
-
-/* ---------- PAGINAÇÃO: handlers dos botões ---------- */
-if (pagePrevBtn) {
-  pagePrevBtn.addEventListener('click', () => {
-    if (currentCategoryPage > 1) {
-      loadCategory(currentCategoryEndpoint, currentCategoryTitle, currentCategoryPage - 1);
-    }
+/* ---------- eventos globais ---------- */
+function attachGlobalEvents() {
+  document.body.addEventListener('click', (e) => {
+    const detailBtn = e.target.closest('.details-button');
+    if (detailBtn) { e.stopPropagation(); const card = detailBtn.closest('.movie-card'); if (card) showDetailsModal(card.dataset.id, card.dataset.type); return; }
+    const favBtn = e.target.closest('.icon-save-button');
+    if (favBtn) { e.stopPropagation(); toggleFavorite(favBtn.dataset.id, favBtn.dataset.type); return; }
+    const watchChannelBtn = e.target.closest('.watch-channel-button');
+    if (watchChannelBtn) { const url = watchChannelBtn.dataset.stream; if (url) playLiveStream(url); return; }
+    const card = e.target.closest('.movie-card');
+    if (card && !e.target.closest('.icon-button') && !e.target.closest('.details-button')) { handleWatchClick(card.dataset.id, card.dataset.type, card.dataset.title); return; }
   });
-}
-if (pageNextBtn) {
-  pageNextBtn.addEventListener('click', () => {
-    if (currentCategoryPage < totalCategoryPages) {
-      loadCategory(currentCategoryEndpoint, currentCategoryTitle, currentCategoryPage + 1);
-    }
+
+  document.addEventListener('click', (e) => {
+    const a = e.target.closest('#main-nav a');
+    if (!a) return;
+    e.preventDefault();
+    const endpoint = a.dataset.endpoint;
+    const title = a.dataset.title || a.textContent.trim();
+    if (!endpoint || endpoint === 'catalog') loadCatalog();
+    else if (endpoint === 'live_tv') loadLiveTV();
+    else if (endpoint === 'favorites') loadFavoritesCatalog();
+    else loadCategory(endpoint, title, 1);
   });
+
+  const debouncedSearch = debounce(q => searchMedia(q), 300);
+  if (searchButton) searchButton.addEventListener('click', () => { const q = (searchInput?.value || '').trim(); if (q) searchMedia(q); else loadCatalog(); });
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => { const q = e.target.value.trim(); if (!q) return; debouncedSearch(q); });
+    searchInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); const q = searchInput.value.trim(); if (q) searchMedia(q); } });
+  }
+
+  if (closeButton) closeButton.addEventListener('click', () => { closeDetailsModal(); });
+  window.addEventListener('click', (e) => { if (e.target === detailsModal) closeDetailsModal(); });
+
+  if (backButton) backButton.addEventListener('click', () => { if (catalogContainer) { catalogContainer.style.display = 'block'; resultsContainer.style.display = 'none'; playerContainer.style.display = 'none'; } });
+
+  if (seasonSelect) seasonSelect.addEventListener('change', (e) => { currentMedia.currentSeason = parseInt(e.target.value); updateEpisodeOptions(currentMedia.currentSeason); });
+  if (episodeSelect) episodeSelect.addEventListener('change', (e) => { currentMedia.currentEpisode = parseInt(e.target.value); });
+
+  if (menuToggle) menuToggle.addEventListener('click', () => { if (!mainNav) return; mainNav.classList.toggle('nav-hidden'); });
+
+  if (genreScroller) genreScroller.addEventListener('keydown', (e) => { if (e.key === 'ArrowRight') { e.preventDefault(); genreScroller.scrollBy({ left: 200, behavior: 'smooth' }); } if (e.key === 'ArrowLeft') { e.preventDefault(); genreScroller.scrollBy({ left: -200, behavior: 'smooth' }); } });
+
+  if (genrePrev) genrePrev.addEventListener('click', () => { if (genreScroller) genreScroller.scrollBy({ left: -300, behavior: 'smooth' }); });
+  if (genreNext) genreNext.addEventListener('click', () => { if (genreScroller) genreNext.scrollBy({ left: 300, behavior: 'smooth' }); });
 }
 
-/* ---------- SEARCH ---------- */
+/* ---------- search ---------- */
 async function searchMedia(query) {
   if (!query) return;
   try {
@@ -606,9 +647,11 @@ async function searchMedia(query) {
   }
 }
 
-/* ---------- INICIALIZAÇÃO ---------- */
+/* ---------- init ---------- */
 document.addEventListener('DOMContentLoaded', () => {
   try {
+    initRefs();
+    attachGlobalEvents();
     favoritesList = loadFavoritesFromLocalStorage();
     loadCatalog();
     loadHeroBanner();
