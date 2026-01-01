@@ -42,7 +42,7 @@
             <div id="hero-indicators"></div>
         </section>
 
-        <div class="view-section">
+        <div class="content-container">
             <section id="genre-bar">
                 <div class="genre-wrapper">
                     <button id="genre-prev" class="genre-nav-btn">‹</button>
@@ -68,8 +68,14 @@
         </div>
 
         <div id="player-layout-area" class="player-layout">
+            
             <div class="video-column">
                 <div id="video-wrapper"></div>
+                
+                <div class="player-actions" style="margin-top: 10px;">
+                    <button id="fullscreen-btn" class="btn-secondary" style="width: 100%;">⛶ Tela cheia</button>
+                </div>
+
                 <div class="player-controls-bottom">
                     <label>Fonte:</label>
                     <div class="custom-select">
@@ -83,11 +89,17 @@
             </div>
 
             <aside id="series-sidebar" class="sidebar-column" style="display: none;">
-                <div class="sidebar-header-box"><h3>Temporadas</h3></div>
+                <div class="sidebar-header-box">
+                    <h3>Temporadas</h3>
+                </div>
                 <div id="seasons-list" class="seasons-grid"></div>
-                <div class="sidebar-header-box" style="margin-top: 10px;"><h3>Episódios</h3></div>
+                
+                <div class="sidebar-header-box" style="margin-top: 10px; border-top: 1px solid #333;">
+                    <h3>Episódios</h3>
+                </div>
                 <div id="episodes-list" class="episodes-list"></div>
             </aside>
+
         </div>
     </div>
 

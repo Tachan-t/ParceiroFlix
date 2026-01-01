@@ -1,4 +1,4 @@
-/* script.js - Final Version 10.0 */
+/* script.js - Final Version 16.0: Fullscreen Permissions Fixed */
 
 const CONFIG = {
     API_KEY: '62fd8e76492e4bdda5e40b8eb6520a00',
@@ -17,7 +17,7 @@ const state = {
     grid: { mode: null, param: null, title: null, page: 1, totalPages: 1 }
 };
 
-/* DOM */
+/* DOM ELEMENTS */
 const dom = {
     views: {
         home: document.getElementById('view-home'),
@@ -44,7 +44,7 @@ const dom = {
     navLinks: document.querySelectorAll('.nav-link')
 };
 
-/* HISTÓRICO */
+/* --- HISTÓRICO DE ASSISTIDOS --- */
 function markAsWatched(tvId, season, episode) {
     const key = `${tvId}-s${season}-e${episode}`;
     state.watchedList[key] = true;
@@ -56,14 +56,19 @@ function isWatched(tvId, season, episode) {
     return !!state.watchedList[key];
 }
 
-/* NAVEGAÇÃO */
+/* --- NAVEGAÇÃO ENTRE TELAS --- */
 function switchView(viewName) {
     Object.values(dom.views).forEach(el => el.style.display = 'none');
     if(dom.views[viewName]) dom.views[viewName].style.display = 'block';
+    
+    // Barra de Gêneros aparece APENAS na Home
+    if(viewName === 'home') dom.containers.genreBar.style.display = 'block';
+    else dom.containers.genreBar.style.display = 'none';
+
     window.scrollTo(0, 0);
 }
 
-/* HOME */
+/* --- CARREGAR HOME --- */
 async function loadHome() {
     switchView('home');
     dom.containers.catalog.innerHTML = '';
@@ -99,7 +104,7 @@ async function loadHome() {
     }
 }
 
-/* FAVORITOS */
+/* --- CARREGAR FAVORITOS --- */
 function loadFavorites() {
     switchView('grid');
     dom.containers.gridTitle.textContent = 'Favoritos';
@@ -122,7 +127,7 @@ function loadFavorites() {
     });
 }
 
-/* TV AO VIVO */
+/* --- CARREGAR TV AO VIVO --- */
 async function loadTV() {
     switchView('grid');
     dom.containers.gridTitle.textContent = 'TV ao Vivo';
@@ -162,7 +167,7 @@ async function loadTV() {
     } catch(e) { dom.containers.grid.innerHTML = '<p>Erro na TV.</p>'; }
 }
 
-/* GRADE */
+/* --- CARREGAR GRADE (Filmes, Séries, Busca) --- */
 async function loadGrid(mode, param, title, page = 1) {
     switchView('grid');
     state.grid = { mode, param, title, page, totalPages: 1 };
@@ -213,18 +218,26 @@ function renderPagination() {
     if (page < totalPages) createBtn('Próxima', page + 1);
 }
 
-/* PLAYER */
+/* --- ABRIR PLAYER --- */
 function openPlayer(id, type, title, liveUrl) {
     switchView('player');
     dom.player.title.textContent = title;
     dom.player.wrapper.innerHTML = '';
     
+    // TV LIVE (Usa tag <video> nativa, geralmente não dá problema)
     if (type === 'tv_live') {
-        dom.player.layout.className = 'player-layout movie-mode'; 
+        dom.player.layout.classList.remove('movie-mode');
         dom.player.sidebar.style.display = 'none';
+        
         const video = document.createElement('video');
-        video.controls = true; video.autoplay = true; video.style.width='100%'; video.style.height='100%';
+        video.controls = true; 
+        video.autoplay = true; 
+        video.style.width='100%'; 
+        video.style.height='100%';
+        video.setAttribute('playsinline', 'true');
+        
         dom.player.wrapper.appendChild(video);
+        
         if (Hls.isSupported() && liveUrl.endsWith('.m3u8')) {
             const hls = new Hls(); hls.loadSource(liveUrl); hls.attachMedia(video);
         } else { video.src = liveUrl; }
@@ -234,7 +247,7 @@ function openPlayer(id, type, title, liveUrl) {
     state.media = { id, type, season: 1, episode: 1 };
 
     if(type === 'movie') {
-        dom.player.layout.className = 'player-layout movie-mode';
+        dom.player.layout.classList.add('movie-mode');
         dom.player.sidebar.style.display = 'none';
         loadIframe();
     } else {
@@ -271,8 +284,10 @@ async function loadEpisodes(id, season) {
         data.episodes.forEach(ep => {
             const btn = document.createElement('button');
             const watched = isWatched(id, season, ep.episode_number);
+            
             btn.className = `episode-btn ${watched ? 'watched' : ''}`;
             btn.textContent = `${ep.episode_number}. ${ep.name}`;
+            
             btn.onclick = () => {
                 document.querySelectorAll('.episode-btn').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
@@ -288,24 +303,41 @@ async function loadEpisodes(id, season) {
     loadIframe();
 }
 
+// --- FUNÇÃO CRÍTICA: CORREÇÃO TELA CHEIA ---
 function loadIframe() {
     const { id, type, season, episode } = state.media;
     const source = document.getElementById('player-source').value;
     let url = '';
+    
     if (source === 'megaembed.com') url = type === 'movie' ? `https://megaembed.com/embed/movie/${id}` : `https://megaembed.com/embed/tv/${id}/${season}/${episode}`;
     else if (source === 'vidsrc-embed.ru') url = type === 'movie' ? `https://vidsrc-embed.ru/embed/movie?tmdb=${id}&ds_lang=pt` : `https://vidsrc-embed.ru/embed/tv?tmdb=${id}&season=${season}&episode=${episode}&ds_lang=pt`;
     else url = type === 'movie' ? `https://2embed.top/embed/movie/${id}` : `https://2embed.top/embed/tv/${id}/${season}/${episode}`;
-    dom.player.wrapper.innerHTML = `<iframe src="${url}" allowfullscreen></iframe>`;
+    
+    // AQUI ESTÁ A CORREÇÃO: Atributos explícitos ="true" e allow policy completa
+    dom.player.wrapper.innerHTML = `
+        <iframe 
+            src="${url}" 
+            width="100%" 
+            height="100%" 
+            frameborder="0" 
+            scrolling="no" 
+            allowfullscreen="true" 
+            webkitallowfullscreen="true" 
+            mozallowfullscreen="true" 
+            allow="autoplay; fullscreen; picture-in-picture; encrypted-media; gyroscope; accelerometer"
+        ></iframe>`;
 }
 
-/* --- CORE --- */
+/* --- FUNÇÕES GERAIS --- */
 function createCard(item, forcedType, isFavLoad = false) {
     let type = forcedType || item.media_type || (item.title ? 'movie' : 'tv');
     const title = item.title || item.name;
     const poster = item.poster_path;
     if(!poster) return null;
+    
     const imgUrl = isFavLoad ? poster : CONFIG.IMG_W500 + poster;
     const isF = state.favorites.some(f => String(f.id) === String(item.id));
+
     const div = document.createElement('div');
     div.className = 'movie-card';
     div.innerHTML = `<button class="fav-btn-card" style="color:${isF ? '#e50914' : '#fff'}">${isF ? '♥' : '♡'}</button><img src="${imgUrl}" loading="lazy">`;
@@ -336,7 +368,7 @@ async function openModal(id, type) {
                 <h2 style="font-size:2rem; margin-top:0;">${title}</h2>
                 <p style="color:#bbb; font-size:1rem; line-height:1.6;">${desc}</p>
                 <div style="margin-top:30px; display:flex; gap:15px;">
-                    <button id="modal-play" class="btn-primary">▶ Assistir</button>
+                    <button id="modal-play" class="btn-primary">▶ Assistir Agora</button>
                     <button id="modal-fav" class="btn-secondary">${isF ? '♥ Remover Favorito' : '♡ Adicionar Favorito'}</button>
                 </div>
             </div>
@@ -369,7 +401,8 @@ async function loadHero() {
             dom.containers.hero.appendChild(slide);
         });
         let i = 0;
-        setInterval(() => {
+        if(state.heroInterval) clearInterval(state.heroInterval);
+        state.heroInterval = setInterval(() => {
             const s = document.querySelectorAll('.hero-slide'); if(!s.length) return;
             s[i].classList.remove('active'); i = (i+1)%s.length; s[i].classList.add('active');
         }, 7000);
@@ -380,18 +413,20 @@ async function loadGenres() {
     const data = await fetchApi('/genre/movie/list');
     const sc = dom.containers.genreScroller;
     sc.innerHTML = '';
-    // BOTÃO INÍCIO
+    
+    // Botão Início
     const btnHome = document.createElement('button');
     btnHome.className = 'genre-button active'; btnHome.textContent = 'Início';
     btnHome.onclick = () => { document.querySelectorAll('.genre-button').forEach(b => b.classList.remove('active')); btnHome.classList.add('active'); loadHome(); };
     sc.appendChild(btnHome);
-    // GÊNEROS DA API
+
     if(data && data.genres) data.genres.forEach(g => {
         const b = document.createElement('button'); b.className='genre-button'; b.textContent=g.name;
         b.onclick = () => { document.querySelectorAll('.genre-button').forEach(x=>x.classList.remove('active')); b.classList.add('active'); loadGrid('genre', g.id, g.name); };
         sc.appendChild(b);
     });
-    // SETAS
+    
+    // Setas
     document.getElementById('genre-prev').onclick = () => sc.scrollBy({ left: -300, behavior: 'smooth' });
     document.getElementById('genre-next').onclick = () => sc.scrollBy({ left: 300, behavior: 'smooth' });
 }
@@ -407,4 +442,22 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('back-button').onclick = () => { switchView('home'); document.getElementById('video-wrapper').innerHTML=''; };
     document.getElementById('player-source').onchange = loadIframe;
     document.getElementById('menu-toggle').onclick = () => { const n = document.getElementById('main-nav'); n.style.display = n.style.display==='block'?'none':'block'; };
+    document.getElementById('fullscreen-btn')?.addEventListener('click', forceFullscreen);
 });
+
+function forceFullscreen() {
+    const wrapper = document.getElementById('video-wrapper');
+    if (!wrapper) return;
+
+    if (document.fullscreenElement) {
+        document.exitFullscreen();
+    } else {
+        if (wrapper.requestFullscreen) {
+            wrapper.requestFullscreen();
+        } else if (wrapper.webkitRequestFullscreen) {
+            wrapper.webkitRequestFullscreen(); // Safari
+        } else if (wrapper.msRequestFullscreen) {
+            wrapper.msRequestFullscreen(); // Edge antigo
+        }
+    }
+}
